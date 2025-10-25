@@ -1,0 +1,40 @@
+#=======================#=======================#=======================
+# These params are common to all trainers and MUST be present
+#=======================#=======================#=======================
+optimizer: 
+  type: SGD             
+  params:
+    lr: 0.1  # initial learning rate
+    momentum: 0.9
+    weight_decay: 0.0005
+
+lr_schedule:
+  type: MultiStepLR
+  params:
+    milestones: [10, 20, 25]
+    gamma: 0.1
+
+dataloader:
+  train:
+    batch_size: 130  # If "sampler" is present this must be None
+    shuffle: True    # If "sampler" is present this MUST be None 
+    num_workers: 8
+  val:
+    batch_size: 130  # Can be any integer as "sampler" is not present in validation
+    shuffle: False   # Can be either True or False as "sampler" is not present in validation
+    num_workers: 8
+
+num_epochs: 30
+device: cuda     
+
+checkpoint:
+  save:
+    dir: ./checkpoints/mobilenetv3
+    frequency: 3 # save a checkpoint every x epochs 
+  load: 
+    path: null 
+    backbone: True 
+    loss: True
+    scheduler: True
+    optimizer: True
+#=======================#=======================#=======================

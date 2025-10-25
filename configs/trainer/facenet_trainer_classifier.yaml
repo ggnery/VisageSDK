@@ -1,0 +1,41 @@
+#=======================#=======================#=======================
+# These params are common to all trainers and MUST be present
+#=======================#=======================#=======================
+optimizer: 
+  type: Adam             
+  params:
+    lr: 0.001
+    weight_decay: 0.001
+
+
+lr_schedule:
+  type: StairLR
+  params:
+    60: 0.0001
+    80: 0.00001
+
+dataloader:
+  train:
+    batch_size: 128 # Smaller batch size for better generalization
+    shuffle: True # If "sampler" is present this MUST be None 
+    num_workers: 8
+  val:
+    batch_size: 128 # Can be any interger as "sampler" is not present in validation
+    shuffle: True # Can be either True or False as "sampler" is not present in validation
+    num_workers: 8
+
+num_epochs: 150
+device: cuda     
+
+checkpoint:
+  save:
+    dir: ./checkpoints/facenet_classifier
+    frequency: 5 # save a checkpoint every x epochs 
+  load: 
+    path: null
+    backbone: True 
+    loss: False
+    scheduler: False
+    optimizer: False
+   
+#=======================#=======================#=======================

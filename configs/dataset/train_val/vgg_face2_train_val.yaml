@@ -1,0 +1,8 @@
+#=======================#=======================#=======================
+# These params are common to all train/val datasets and MUST be present
+#=======================#=======================#=======================
+train_dir: "/home/gabriel-nery/ceia/FaceNet/data/croped/vggface2/train"
+val_dir: "/home/gabriel-nery/ceia/FaceNet/data/croped/vggface2/val"
+
+num_classes: null # train + validation number of classes
+#=======================#=======================#=======================
