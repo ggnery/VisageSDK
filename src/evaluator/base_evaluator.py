@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 import torch
 from torch.utils.data import DataLoader
@@ -37,6 +38,12 @@ class BaseEvaluator(ABC):
         return embeddings
 
     @abstractmethod
-    def evaluate(self) -> dict[str, float]:
-        """Run evaluation. Returns a flat dict of metric_name -> value."""
+    def evaluate(self) -> dict[str, Any]:
+        """Run evaluation. Returns a dict of metric_name -> value.
+
+        Most entries are scalar (float / int). Evaluators MAY include nested
+        structures (e.g. `{"roc_curve": {"fpr": [...], "tpr": [...]}}`) for
+        downstream plotting; eval.py and the GUI render scalars and
+        non-scalars separately.
+        """
         raise NotImplementedError

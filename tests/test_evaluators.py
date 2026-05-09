@@ -81,11 +81,47 @@ class TestVerificationEvaluator:
         assert 0.0 <= r["roc_auc"] <= 1.0
         assert 0.0 <= r["eer"] <= 1.0
 
+    def test_roc_curve_emitted(self, lfw_eval_dataset, tiny_backbone, tmp_path):
+        """`roc_curve` is the payload Monitor Eval uses to plot the ROC."""
+        evaluator = VerificationEvaluator(_eval_cfg(tmp_path), lfw_eval_dataset, tiny_backbone)
+        r = evaluator.evaluate()
+        assert "roc_curve" in r
+        curve = r["roc_curve"]
+        assert isinstance(curve, dict)
+        for k in ("fpr", "tpr", "thresholds"):
+            assert k in curve, f"missing {k}"
+            assert isinstance(curve[k], list)
+            assert all(isinstance(v, (int, float)) for v in curve[k])
+        assert len(curve["fpr"]) == len(curve["tpr"]) == len(curve["thresholds"])
+        # FPR/TPR live on the unit interval; thresholds are distances in [0, 2]
+        # for cosine but we just sanity-check finiteness.
+        assert all(0.0 <= v <= 1.0 for v in curve["fpr"])
+        assert all(0.0 <= v <= 1.0 for v in curve["tpr"])
+        assert all(math.isfinite(v) for v in curve["thresholds"])
+
     def test_distance_kind_validation(self, lfw_eval_dataset, tiny_backbone, tmp_path):
         cfg = _eval_cfg(tmp_path, overrides={"distance": "manhattan"})
         evaluator = VerificationEvaluator(cfg, lfw_eval_dataset, tiny_backbone)
         with pytest.raises(ValueError, match="Unknown distance"):
             evaluator.evaluate()
+
+    def test_score_distributions_emitted(self, lfw_eval_dataset, tiny_backbone, tmp_path):
+        """`score_distributions` is the payload the Monitor Eval histogram
+        renderer uses. Must split per-pair distances by label and tag the
+        distance metric used so the GUI can label the x-axis."""
+        evaluator = VerificationEvaluator(_eval_cfg(tmp_path), lfw_eval_dataset, tiny_backbone)
+        r = evaluator.evaluate()
+        assert "score_distributions" in r
+        sd = r["score_distributions"]
+        assert isinstance(sd, dict)
+        for k in ("genuine", "impostor"):
+            assert k in sd
+            assert isinstance(sd[k], list)
+            assert all(isinstance(v, float) and math.isfinite(v) for v in sd[k])
+        # Dataset has 2 folds × 2 same + 2 diff per fold = 4 same / 4 diff.
+        assert len(sd["genuine"]) == 4
+        assert len(sd["impostor"]) == 4
+        assert sd["distance_kind"] == "cosine"
 
     def test_euclidean_distance_kind(self, lfw_eval_dataset, tiny_backbone, tmp_path):
         cfg = _eval_cfg(tmp_path, overrides={"distance": "euclidean"})

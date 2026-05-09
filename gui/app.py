@@ -108,22 +108,25 @@ def yaml_field(label: str, key_prefix: str, subdir: str, default_pattern: str = 
         format_func=lambda p: str(p.relative_to(REPO_ROOT)),
         key=f"{key_prefix}_yaml_select",
     )
-    # Streamlit ignores the `value=` arg of `st.text_area` once its key already
-    # exists in session_state, so switching the dropdown otherwise leaves the
-    # editor showing the previous file's contents — and the run silently uses
-    # those wrong contents. Push the new file into session_state ourselves
-    # whenever the picker changes so the editor reloads from disk.
-    text_key = f"{key_prefix}_yaml_text"
-    prev_path_key = f"{key_prefix}_yaml_prev_path"
-    selected_str = str(selected)
-    if st.session_state.get(prev_path_key) != selected_str:
-        st.session_state[prev_path_key] = selected_str
-        st.session_state[text_key] = load_yaml_text(selected)
+    # Streamlit's text_area is sticky: once a key is in session_state, the
+    # `value=` arg is ignored on later renders. Tying the widget key to the
+    # selected file path gives each file its own widget identity, so switching
+    # the dropdown drops a fresh widget that honors `value=` (the file's
+    # disk content). Inline edits to the same file are preserved across
+    # reruns because the key stays stable while the file is selected.
+    file_disk_text = load_yaml_text(selected)
+    text_key = f"{key_prefix}_yaml_text__{selected.name}"
     text = st.text_area(
         f"{label} — edit",
+        value=file_disk_text,
         height=180,
         key=text_key,
     )
+    # Final safety net: if for any reason the editor still came back empty
+    # while the file on disk has content, fall back to the disk text. Prevents
+    # silent zero-byte snapshots that crash eval.py / train.py downstream.
+    if not text.strip() and file_disk_text.strip():
+        text = file_disk_text
     return selected, text
 
 
@@ -613,10 +616,148 @@ def _render_eval_results(results: dict) -> None:
         df = pd.DataFrame(rows, columns=["metric", "value", "raw"]).set_index("metric")
         st.dataframe(df, use_container_width=True)
 
-    non_scalar = {k: v for k, v in results.items() if not isinstance(v, (int, float))}
-    if non_scalar:
+    # ── Curves (ROC etc.) ───────────────────────────────────────────────
+    roc = results.get("roc_curve")
+    if isinstance(roc, dict) and "fpr" in roc and "tpr" in roc:
+        st.subheader("ROC curve")
+        _plot_roc_curve(roc["fpr"], roc["tpr"], auc=scalars.get("roc_auc"), eer=scalars.get("eer"))
+
+    score_dists = results.get("score_distributions")
+    if isinstance(score_dists, dict) and "genuine" in score_dists and "impostor" in score_dists:
+        st.subheader("Genuine vs impostor score distributions")
+        # Pick the most informative threshold lines available in scalars: EER
+        # (operating point of the ROC) and TAR@FAR=1e-3 (typical biometric
+        # acceptance threshold). Both are in distance space.
+        threshold_lines = []
+        if "eer_threshold" in scalars:
+            threshold_lines.append(("EER", float(scalars["eer_threshold"])))
+        if "threshold@far=1e-03" in scalars:
+            threshold_lines.append(("FAR=1e-3", float(scalars["threshold@far=1e-03"])))
+        _plot_score_distributions(
+            genuine=score_dists["genuine"],
+            impostor=score_dists["impostor"],
+            distance_kind=str(score_dists.get("distance_kind", "cosine")),
+            threshold_lines=threshold_lines,
+        )
+
+    # ── Anything else (rare) ────────────────────────────────────────────
+    leftover = {
+        k: v
+        for k, v in results.items()
+        if not isinstance(v, (int, float)) and k not in {"roc_curve", "score_distributions"}
+    }
+    if leftover:
         st.subheader("Other (non-scalar)")
-        st.json(non_scalar)
+        st.json(leftover)
+
+
+def _plot_roc_curve(
+    fpr: list[float], tpr: list[float], auc: float | None = None, eer: float | None = None
+) -> None:
+    """Render a verification ROC curve in linear and log-x views side by side.
+
+    Log-x highlights the low-FAR operating regime that matters for
+    biometric thresholds; the linear view is for at-a-glance shape and
+    AUC. The two share data so they always agree."""
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    fpr_arr = np.asarray(fpr, dtype=float)
+    tpr_arr = np.asarray(tpr, dtype=float)
+    order = np.argsort(fpr_arr)
+    fpr_arr = fpr_arr[order]
+    tpr_arr = tpr_arr[order]
+
+    auc_label = f"AUC = {auc:.3f}" if auc is not None else "ROC"
+    title_extra = f" (EER = {eer * 100:.2f}%)" if eer is not None else ""
+
+    col_linear, col_log = st.columns(2)
+    with col_linear:
+        fig_lin, ax_lin = plt.subplots(figsize=(4.5, 4.5))
+        ax_lin.plot(fpr_arr, tpr_arr, color="C0", label=auc_label, linewidth=2)
+        ax_lin.plot([0, 1], [0, 1], "--", color="gray", alpha=0.4, label="Chance")
+        ax_lin.set_xlabel("False Positive Rate")
+        ax_lin.set_ylabel("True Positive Rate")
+        ax_lin.set_xlim(0, 1)
+        ax_lin.set_ylim(0, 1.02)
+        ax_lin.set_title(f"Linear{title_extra}")
+        ax_lin.legend(loc="lower right")
+        ax_lin.grid(True, alpha=0.3)
+        st.pyplot(fig_lin)
+        plt.close(fig_lin)
+
+    with col_log:
+        fig_log, ax_log = plt.subplots(figsize=(4.5, 4.5))
+        # Replace zero FPR with a tiny positive so the log scale doesn't drop
+        # those points off the left edge.
+        floor = max(1e-6, float(fpr_arr[fpr_arr > 0].min()) if (fpr_arr > 0).any() else 1e-3)
+        x = np.where(fpr_arr <= 0, floor, fpr_arr)
+        ax_log.plot(x, tpr_arr, color="C0", label=auc_label, linewidth=2)
+        ax_log.set_xscale("log")
+        ax_log.set_xlim(floor, 1)
+        ax_log.set_ylim(0, 1.02)
+        ax_log.set_xlabel("False Positive Rate (log)")
+        ax_log.set_ylabel("True Positive Rate")
+        ax_log.set_title("Log-FPR — operating regime")
+        ax_log.legend(loc="lower right")
+        ax_log.grid(True, which="both", alpha=0.3)
+        st.pyplot(fig_log)
+        plt.close(fig_log)
+
+
+def _plot_score_distributions(
+    genuine: list[float],
+    impostor: list[float],
+    distance_kind: str = "cosine",
+    threshold_lines: list[tuple[str, float]] | None = None,
+) -> None:
+    """Overlapping histograms of genuine vs impostor pair distances.
+
+    The visual gap between the two distributions is the actual signal a
+    threshold-based verifier exploits. When clusters are loose (cross-
+    entropy + small dataset), the two histograms bleed into each other;
+    a margin-based loss should push genuine left and impostor right."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    g = np.asarray(genuine, dtype=float)
+    i = np.asarray(impostor, dtype=float)
+    if g.size == 0 or i.size == 0:
+        st.info("Not enough pairs to plot the score distributions.")
+        return
+
+    # Shared bin edges so the two histograms are directly comparable; bin
+    # count scales with sqrt(n) but capped to keep the plot readable.
+    n_bins = int(min(60, max(20, np.sqrt(max(g.size, i.size)))))
+    lo = float(min(g.min(), i.min()))
+    hi = float(max(g.max(), i.max()))
+    # matplotlib accepts Sequence[float] (not numpy array directly per its
+    # stubs), so build the edges as a Python list.
+    bins: list[float] = np.linspace(lo, hi, n_bins + 1).tolist()
+
+    fig, ax = plt.subplots(figsize=(9, 4))
+    ax.hist(g, bins=bins, alpha=0.55, color="#2ca02c", label=f"Genuine (n={g.size})")
+    ax.hist(i, bins=bins, alpha=0.55, color="#d62728", label=f"Impostor (n={i.size})")
+
+    if threshold_lines:
+        # Stagger the line styles so multiple thresholds remain distinguishable
+        # when they fall close together (typical for tight ROC operating points).
+        styles = [("--", "C0"), (":", "C4"), ("-.", "C5")]
+        for (label, value), (linestyle, color) in zip(threshold_lines, styles, strict=False):
+            ax.axvline(value, linestyle=linestyle, color=color, linewidth=1.5, label=f"{label} thr = {value:.3f}")
+
+    ax.set_xlabel(f"{distance_kind.capitalize()} distance — lower = more similar")
+    ax.set_ylabel("Pair count")
+    ax.set_title("Score distributions: genuine vs impostor")
+    ax.legend(loc="upper right")
+    ax.grid(True, alpha=0.3)
+    st.pyplot(fig)
+    plt.close(fig)
+
+    st.caption(
+        f"Genuine: median {np.median(g):.3f}, IQR [{np.percentile(g, 25):.3f}, {np.percentile(g, 75):.3f}]"
+        f"  ·  Impostor: median {np.median(i):.3f}, IQR [{np.percentile(i, 25):.3f}, {np.percentile(i, 75):.3f}]"
+    )
 
 
 # =============================================================================
