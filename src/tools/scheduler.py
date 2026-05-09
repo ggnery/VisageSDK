@@ -1,12 +1,19 @@
-from typing import Dict
-from config.trainer.trainer_config import TrainerConfig
-from torch.optim.lr_scheduler import LRScheduler, LambdaLR, MultiStepLR, StepLR, ReduceLROnPlateau
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import (
+    LambdaLR,
+    LRScheduler,
+    MultiStepLR,
+    ReduceLROnPlateau,
+    StepLR,
+)
+
+from config.trainer.trainer_config import TrainerConfig
+
 
 def build_scheduler(optimizer: Optimizer, config: TrainerConfig) -> LRScheduler:
     scheduler_type = config.lr_schedule_type
     scheduler_params = config.lr_schedule_params
-    
+
     match scheduler_type:
         case "StairLR":
             return build_stair_lr(optimizer, scheduler_params)
@@ -17,43 +24,50 @@ def build_scheduler(optimizer: Optimizer, config: TrainerConfig) -> LRScheduler:
         case "ReduceLROnPlateau":
             return build_reduce_lr_on_plateau(optimizer, scheduler_params)
         case _:
-            raise Exception(f"Scheduler {scheduler_type} not implemented")
-        
-    
-def build_stair_lr(optimizer: Optimizer, scheduler_params: Dict[int, float]) -> LambdaLR:
-    epochs = sorted(scheduler_params.keys())  # Sort epochs for proper traversal
-    initial_lr = optimizer.param_groups[0]["lr"]
-    
-    def lr_lambda(epoch: int):
-        target_lr = initial_lr
-        
-        for epoch_threshold in epochs:
-            if epoch >= epoch_threshold:
-                target_lr = scheduler_params[epoch_threshold]
-            else:
-                break
-        
-        return target_lr / initial_lr
-            
-    return LambdaLR(optimizer, lr_lambda)
+            raise ValueError(f"Scheduler {scheduler_type} not implemented")
 
 
-def build_multi_step_lr(optimizer: Optimizer, scheduler_params: Dict) -> MultiStepLR:
+def build_stair_lr(optimizer: Optimizer, scheduler_params: dict[int, float]) -> LambdaLR:
+    """Stair LR: at each milestone epoch, set the LR to the configured value.
 
-    milestones = scheduler_params.get('milestones', [])
-    gamma = scheduler_params.get('gamma', 0.1)
-    
+    The YAML maps `epoch -> absolute_lr`. Each parameter group is given its
+    own lambda so the absolute target applies regardless of the group's base
+    LR — for example with discriminative LRs (`optimizer.param_groups`), all
+    groups land on the same target value at each milestone instead of being
+    scaled multiplicatively from group 0's base.
+    """
+    epochs = sorted(scheduler_params.keys())
+
+    def make_lambda(base_lr: float):
+        def lr_lambda(epoch: int) -> float:
+            target = base_lr
+            for ep in epochs:
+                if epoch >= ep:
+                    target = scheduler_params[ep]
+                else:
+                    break
+            return (target / base_lr) if base_lr else 1.0
+
+        return lr_lambda
+
+    lambdas = [make_lambda(g["lr"]) for g in optimizer.param_groups]
+    return LambdaLR(optimizer, lambdas)
+
+
+def build_multi_step_lr(optimizer: Optimizer, scheduler_params: dict) -> MultiStepLR:
+    milestones = scheduler_params.get("milestones", [])
+    gamma = scheduler_params.get("gamma", 0.1)
     return MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
 
-def build_step_lr(optimizer: Optimizer, scheduler_params: Dict) -> StepLR:
-    gamma = scheduler_params["gamma"]
-    step_size = scheduler_params["step_size"]
-    
-    return StepLR(optimizer, step_size, gamma)
 
-def build_reduce_lr_on_plateau(optimizer: Optimizer, scheduler_params: Dict) -> ReduceLROnPlateau:
-    mode = scheduler_params["mode"]
-    factor = scheduler_params["factor"]
-    patience = scheduler_params["patience"]
-    
-    return ReduceLROnPlateau(optimizer, mode, factor, patience)
+def build_step_lr(optimizer: Optimizer, scheduler_params: dict) -> StepLR:
+    return StepLR(optimizer, scheduler_params["step_size"], scheduler_params["gamma"])
+
+
+def build_reduce_lr_on_plateau(optimizer: Optimizer, scheduler_params: dict) -> ReduceLROnPlateau:
+    return ReduceLROnPlateau(
+        optimizer,
+        scheduler_params["mode"],
+        scheduler_params["factor"],
+        scheduler_params["patience"],
+    )

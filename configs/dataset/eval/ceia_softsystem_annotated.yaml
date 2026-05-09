@@ -1,0 +1,8 @@
+# IdentificationEvaluator layout for the annotated dataset.
+# gallery -> train split, probe -> val split (no held-out test set).
+# Built by:
+#   uv run python scripts/build_eval_layout.py \
+#       --src ./datasets/ceia_softsystem_annotated_split \
+#       --dst ./datasets/ceia_softsystem_annotated_eval \
+#       --gallery-split train --probe-split val
+eval_dir: "./datasets/ceia_softsystem_annotated_eval"

@@ -1,3 +1,3 @@
-from .base_transformation_config import BaseTransformationConfig
+from .base_transformation_config import TransformationConfig
 
-__all__ = ["BaseTransformationConfig"]
+__all__ = ["TransformationConfig"]

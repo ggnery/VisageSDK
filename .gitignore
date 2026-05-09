@@ -1,6 +1,10 @@
+datasets/
+models/
 data/
 checkpoints/
+runs/
 nohup.out
+.ruff_cache/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,0 +1,9 @@
+device: cuda
+batch_size: 128
+num_workers: 4
+
+# Ranks for rank-N accuracy reporting
+ranks: [1, 5, 10, 20]
+
+# Maximum rank tracked in the CMC curve (clipped to gallery size at runtime)
+cmc_max_rank: 20

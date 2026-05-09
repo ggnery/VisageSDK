@@ -1,0 +1,107 @@
+# Fine-tuning template:
+#   - load a pre-trained backbone checkpoint
+#   - freeze early backbone layers
+#   - apply discriminative learning rates (lower for early layers, higher for the head)
+#   - progressively unfreeze layers as training advances
+#
+# Patterns are fnmatch against named_parameters() prefixed with "backbone." or "loss.",
+# so e.g. "backbone.features.[0-2].*" targets the first three feature blocks.
+
+optimizer:
+  type: AdamW
+  params:
+    lr: 1.0e-3        # default LR (also applies to params not matched by any group)
+    weight_decay: 1.0e-4
+
+  param_groups:
+    - pattern: "backbone.features.[0-2].*"
+      lr: 1.0e-5
+    - pattern: "backbone.features.*"
+      lr: 1.0e-4
+    - pattern: "loss.*"
+      lr: 1.0e-3
+
+freeze:
+  # Freeze every backbone parameter that does NOT belong to the head
+  # (use either `patterns` OR `except`, never both)
+  except:
+    - "last_linear*"
+    - "last_bn*"
+    - "output_layer*"
+    - "fc*"
+
+  # Progressively release layers during training
+  unfreeze_at_epoch:
+    3: ["features.[8-9]*", "features.1[0-9]*"]
+    6: ["features.[3-7]*"]
+    10: ["features.*"]
+
+lr_schedule:
+  type: StepLR
+  params:
+    step_size: 5
+    gamma: 0.5
+
+dataloader:
+  train:
+    batch_size: 64
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 64
+    shuffle: False
+    num_workers: 4
+
+num_epochs: 15
+device: cuda
+
+checkpoint:
+  save:
+    dir: ./checkpoints/finetune
+    frequency: 5
+  load:
+    path: ./checkpoints/pretrained.pth   # set to null if starting from scratch
+    backbone: True
+    loss: False
+    scheduler: False
+    optimizer: False
+
+# --- Modernization knobs (all optional) ---
+
+# Reproducibility. seed=null skips seeding entirely; deterministic forces
+# cuDNN deterministic mode (slower but bit-for-bit reproducible).
+seed: 42
+deterministic: false
+
+# Mixed precision (only active on CUDA). dtype: float16 | bfloat16.
+amp:
+  enabled: true
+  dtype: float16
+
+# Gradient clipping. Set max_norm to null to disable.
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+# TensorBoard scalar logging. log_dir defaults to <checkpoint_save_dir>/runs.
+logging:
+  tensorboard: true
+  log_dir: null
+
+# Backbone-only ONNX dropped next to every .pth checkpoint. Loss head is
+# excluded by design — for re-id, downstream consumers want raw embeddings.
+onnx_export:
+  enabled: false        # opt-in
+  opset: 17
+  dynamic_batch: true
+
+# Run an evaluator inline every N epochs and log the metrics to TensorBoard.
+periodic_eval:
+  enabled: true
+  every_n_epochs: 5
+  dataset: lfw_pairs
+  dataset_config: ./configs/dataset/eval/lfw_eval.yaml
+  transformation: lfw_eval
+  transformation_config: ./configs/transformation/eval/lfw_eval_transformation.yaml
+  evaluator: verification
+  evaluator_config: ./configs/evaluator/lfw_verification.yaml

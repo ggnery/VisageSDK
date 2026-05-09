@@ -1,10 +1,16 @@
-from .training_context import BatchContext, TrainingContext, EpochContext
+"""Lazy-import wrapper to avoid circular imports with backbone.base_backbone."""
 
-__all__ = ["Trainer", "BatchContext", "TrainingContext", "EpochContext"]
+from typing import TYPE_CHECKING
 
-def __getattr__(name):
+if TYPE_CHECKING:
+    from .trainer import Trainer  # noqa: F401
+
+__all__ = ["Trainer"]
+
+
+def __getattr__(name: str):
     if name == "Trainer":
-        # Lazy import to avoid circular dependency with backbone.base_backbone
         from .trainer import Trainer
+
         return Trainer
     raise AttributeError(f"module {__name__} has no attribute {name}")

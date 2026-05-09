@@ -1,0 +1,88 @@
+[project]
+name = "visage-sdk"
+version = "0.1.0"
+description = "Modular face recognition training framework"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+dependencies = [
+    "torch>=2.11,<3",
+    "torchvision>=0.26,<1",
+    "pyyaml>=6.0",
+    "matplotlib>=3.10",
+    "tqdm>=4.67",
+    "python-dotenv>=1.2",
+    "numpy>=2.4",
+    "tensorboard>=2.20",
+    "streamlit>=1.57",
+    "pandas>=3.0",
+    "pillow>=12",
+    "onnx>=1.20",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "pytest-cov>=7",
+    "ruff>=0.15",
+    "pyright>=1.1.409",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# `src/` is a flat collection of top-level packages (`config`, `backbone`, ...)
+# rather than a single namespace; `package-dir = {"" = "src"}` exposes each of
+# them at the top level after `uv sync`, removing every sys.path hack from the
+# entry-point scripts (train.py, eval.py, gui/app.py, tests/conftest.py).
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = ["registry"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["tests*", "gui*"]
+
+[tool.uv.sources]
+# Override here if a custom torch wheel index is needed (CUDA-specific etc.)
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["notebooks", "runs", ".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+]
+
+[tool.pyright]
+include = ["src", "gui", "tests", "train.py", "eval.py"]
+exclude = ["**/__pycache__", "**/.venv", "runs", "notebooks"]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "basic"
+
+# torch's __init__.py re-exports many runtime-public names (`torch.cat`,
+# `torch.device`, `torch.tensor`, ...) without listing them in `__all__`.
+# Pyright then flags every reference to them (and `from torch import cat`)
+# as `reportPrivateImportUsage`. They are NOT private — this is a known
+# torch packaging quirk. This single project-wide override is the cleanest
+# correct fix; the alternative is sprinkling 100+ per-line ignores that
+# don't reflect any real safety concern.
+reportPrivateImportUsage = "none"

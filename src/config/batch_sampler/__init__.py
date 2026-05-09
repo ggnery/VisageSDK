@@ -1,4 +1,3 @@
-from .base_batch_sampler_config import BaseBatchSamplerConfig
-from .facenet_batch_sampler_config import FacenetBatchSamplerConfig
+from .base_batch_sampler_config import BatchSamplerConfig
 
-__all__ = ["BaseBatchSamplerConfig", "FacenetBatchSamplerConfig"]
+__all__ = ["BatchSamplerConfig"]

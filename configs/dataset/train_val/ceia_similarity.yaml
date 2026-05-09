@@ -1,0 +1,11 @@
+#=======================#=======================#=======================
+# These params are common to all train/val datasets and MUST be present
+#=======================#=======================#=======================
+# Train/val come from scripts/split_dataset.py with --val-frac 0.15 --test-frac 0.15.
+# `test/` exists alongside on disk but is NOT consumed by the trainer — it's
+# used at eval time as the IdentificationDataset probe (see configs/dataset/eval/).
+train_dir: "./datasets/ceia_similarity_split/train"
+val_dir: "./datasets/ceia_similarity_split/val"
+
+num_classes: 179
+#=======================#=======================#=======================

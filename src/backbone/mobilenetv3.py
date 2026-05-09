@@ -1,12 +1,12 @@
+from collections.abc import Callable, Sequence
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Sequence
-from typing_extensions import override
+from typing import Any, override
 
 import torch
-from torch import nn, Tensor
+from torch import Tensor, nn
 
 from backbone.base_backbone import BaseBackbone
-from config.backbone.mobilenetv3_config import MobileNetV3Config
+from config.backbone.base_backbone_config import BackboneConfig
 
 
 def _make_divisible(v: float, divisor: int = 8) -> int:
@@ -19,28 +19,27 @@ def _make_divisible(v: float, divisor: int = 8) -> int:
 
 
 class Conv2dNormActivation(nn.Sequential):
-    """
-    A modular convolutional block that combines a 2D convolutional layer, optional normalization, and optional activation.
-    """
+    """A 2D convolutional block: Conv2d + optional norm + optional activation."""
+
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         kernel_size: int = 3,
         stride: int = 1,
-        padding: Optional = None,
+        padding: int | None = None,
         groups: int = 1,
-        norm_layer: Optional[Callable[..., nn.Module]] = nn.BatchNorm2d,
-        activation_layer: Optional[Callable[..., nn.Module]] = nn.PReLU,
+        norm_layer: Callable[..., nn.Module] | None = nn.BatchNorm2d,
+        activation_layer: Callable[..., nn.Module] | None = nn.PReLU,
         dilation: int = 1,
-        inplace: Optional[bool] = True,
+        inplace: bool | None = True,
         bias: bool = True,
     ) -> None:
 
         if padding is None:
             padding = (kernel_size - 1) // 2 * dilation
 
-        layers: List[nn.Module] = [
+        layers: list[nn.Module] = [
             nn.Conv2d(
                 in_channels=in_channels,
                 out_channels=out_channels,
@@ -70,6 +69,7 @@ class SqueezeExcitation(torch.nn.Module):
     This block implements the Squeeze-and-Excitation block from https://arxiv.org/abs/1709.01507 (see Fig. 1).
     Parameters ``activation``, and ``scale_activation`` correspond to ``delta`` and ``sigma`` in eq. 3.
     """
+
     def __init__(
         self,
         input_channels: int,
@@ -107,9 +107,9 @@ class LinearBlock(nn.Module):
                 stride=stride,
                 padding=padding,
                 groups=groups,
-                bias=False
+                bias=False,
             ),
-            nn.BatchNorm2d(out_channels)
+            nn.BatchNorm2d(out_channels),
         )
 
     def forward(self, x):
@@ -121,11 +121,10 @@ class GDC(nn.Module):
         super().__init__()
         self.features = nn.Sequential(
             LinearBlock(in_channels, in_channels, kernel_size=7, stride=1, padding=0, groups=in_channels),
-            nn.Flatten()
+            nn.Flatten(),
         )
         self.fc = nn.Sequential(
-            nn.Linear(in_channels, embedding_dim, bias=False),
-            nn.BatchNorm1d(embedding_dim)
+            nn.Linear(in_channels, embedding_dim, bias=False), nn.BatchNorm1d(embedding_dim)
         )
 
     def forward(self, x):
@@ -167,15 +166,17 @@ class InvertedResidual(nn.Module):
     def __init__(
         self,
         cnf: InvertedResidualConfig,
-        se_layer: Callable[..., nn.Module] = partial(SqueezeExcitation, scale_activation=nn.Hardsigmoid),
+        se_layer: Callable[..., nn.Module] | None = None,
     ):
         super().__init__()
+        if se_layer is None:
+            se_layer = partial(SqueezeExcitation, scale_activation=nn.Hardsigmoid)
         if cnf.stride not in [1, 2]:
             raise ValueError(f"stride should be 1 or 2 instead of {cnf.stride}")
 
         self.use_res_connect = cnf.stride == 1 and cnf.input_channels == cnf.out_channels
 
-        layers: List[nn.Module] = []
+        layers: list[nn.Module] = []
         activation_layer = nn.Hardswish if cnf.use_hs else nn.PReLU
 
         # expand
@@ -208,7 +209,9 @@ class InvertedResidual(nn.Module):
 
         # project
         layers.append(
-            Conv2dNormActivation(cnf.expanded_channels, cnf.out_channels, kernel_size=1, activation_layer=None)
+            Conv2dNormActivation(
+                cnf.expanded_channels, cnf.out_channels, kernel_size=1, activation_layer=None
+            )
         )
 
         self.block = nn.Sequential(*layers)
@@ -226,24 +229,25 @@ class MobileNetV3(BaseBackbone):
     """
     This block implements the MobileNetV3 from the framework on https://github.com/yakhyo/face-recognition.
     """
-    def __init__(self, config: MobileNetV3Config) -> None:
+
+    def __init__(self, config: BackboneConfig) -> None:
         super().__init__(config)
-        
+
         # Get configuration parameters
         self.model_size = config.model_size
         self.width_mult = config.width_mult
         self.reduced_tail = config.reduced_tail
         self.dilated = config.dilated
         self.input_size = config.input_size
-        
+
         # Build model configuration
         inverted_residual_setting, last_channel = self._mobilenet_v3_conf(
             arch="mobilenet_v3_" + self.model_size,
             width_mult=self.width_mult,
             reduced_tail=self.reduced_tail,
-            dilated=self.dilated
+            dilated=self.dilated,
         )
-        
+
         if not inverted_residual_setting:
             raise ValueError("The inverted_residual_setting should not be empty")
         elif not (
@@ -252,7 +256,7 @@ class MobileNetV3(BaseBackbone):
         ):
             raise TypeError("The inverted_residual_setting should be List[InvertedResidualConfig]")
 
-        layers: List[nn.Module] = []
+        layers: list[nn.Module] = []
 
         # building first layer
         firstconv_output_channels = inverted_residual_setting[0].input_channels
@@ -312,7 +316,7 @@ class MobileNetV3(BaseBackbone):
         width_mult: float = 1.0,
         reduced_tail: bool = False,
         dilated: bool = False,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         reduce_divider = 2 if reduced_tail else 1
         dilation = 2 if dilated else 1
@@ -335,8 +339,26 @@ class MobileNetV3(BaseBackbone):
                 bneck_conf(80, 3, 480, 112, True, "HS", 1, 1),
                 bneck_conf(112, 3, 672, 112, True, "HS", 1, 1),
                 bneck_conf(112, 5, 672, 160 // reduce_divider, True, "HS", 2, dilation),  # C4
-                bneck_conf(160 // reduce_divider, 5, 960 // reduce_divider, 160 // reduce_divider, True, "HS", 1, dilation),
-                bneck_conf(160 // reduce_divider, 5, 960 // reduce_divider, 160 // reduce_divider, True, "HS", 1, dilation),
+                bneck_conf(
+                    160 // reduce_divider,
+                    5,
+                    960 // reduce_divider,
+                    160 // reduce_divider,
+                    True,
+                    "HS",
+                    1,
+                    dilation,
+                ),
+                bneck_conf(
+                    160 // reduce_divider,
+                    5,
+                    960 // reduce_divider,
+                    160 // reduce_divider,
+                    True,
+                    "HS",
+                    1,
+                    dilation,
+                ),
             ]
             last_channel = adjust_channels(1280 // reduce_divider)  # C5
         elif arch == "mobilenet_v3_small":
@@ -350,8 +372,26 @@ class MobileNetV3(BaseBackbone):
                 bneck_conf(40, 5, 120, 48, True, "HS", 1, 1),
                 bneck_conf(48, 5, 144, 48, True, "HS", 1, 1),
                 bneck_conf(48, 5, 288, 96 // reduce_divider, True, "HS", 2, dilation),  # C4
-                bneck_conf(96 // reduce_divider, 5, 576 // reduce_divider, 96 // reduce_divider, True, "HS", 1, dilation),
-                bneck_conf(96 // reduce_divider, 5, 576 // reduce_divider, 96 // reduce_divider, True, "HS", 1, dilation),
+                bneck_conf(
+                    96 // reduce_divider,
+                    5,
+                    576 // reduce_divider,
+                    96 // reduce_divider,
+                    True,
+                    "HS",
+                    1,
+                    dilation,
+                ),
+                bneck_conf(
+                    96 // reduce_divider,
+                    5,
+                    576 // reduce_divider,
+                    96 // reduce_divider,
+                    True,
+                    "HS",
+                    1,
+                    dilation,
+                ),
             ]
             last_channel = adjust_channels(1024 // reduce_divider)  # C5
         else:

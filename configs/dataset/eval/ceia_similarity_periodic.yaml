@@ -1,0 +1,13 @@
+# IdentificationEvaluator layout for IN-TRAINING periodic eval.
+# gallery + probe both come from val (held-out from training): val is
+# halved 50/50 stratified per class. test stays untouched for the final
+# eval reported on the Evaluate tab.
+# Built by:
+#   uv run python scripts/split_dataset.py \
+#       --src ./datasets/ceia_similarity_split/val \
+#       --dst ./datasets/ceia_similarity_val_halves --val-frac 0.5
+#   uv run python scripts/build_eval_layout.py \
+#       --src ./datasets/ceia_similarity_val_halves \
+#       --dst ./datasets/ceia_similarity_eval_val \
+#       --gallery-split train --probe-split val
+eval_dir: "./datasets/ceia_similarity_eval_val"

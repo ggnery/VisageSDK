@@ -1,29 +1,35 @@
 import torch
 import torch.nn as nn
+
 from backbone.base_backbone import BaseBackbone
-from config.backbone.inception_resnet_v2_config import InceptionResNetV2Config
+from config.backbone.base_backbone_config import BackboneConfig
+
 
 class Conv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, padding, stride=1, bias=True):
-        super(Conv2d, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias)
+        super().__init__()
+        self.conv = nn.Conv2d(
+            in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias
+        )
         self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.1)
         self.relu = nn.ReLU(inplace=True)
+
     def forward(self, x):
         x = self.conv(x)
         x = self.bn(x)
         x = self.relu(x)
         return x
 
+
 class ReductionA(nn.Module):
     # 35 -> 17
-    def __init__(self, in_channels, k, l, m, n):
-        super(ReductionA, self).__init__()
+    def __init__(self, in_channels, k, l_, m, n):
+        super().__init__()
         self.branch_0 = Conv2d(in_channels, n, 3, stride=2, padding=0, bias=False)
         self.branch_1 = nn.Sequential(
             Conv2d(in_channels, k, 1, stride=1, padding=0, bias=False),
-            Conv2d(k, l, 3, stride=1, padding=1, bias=False),
-            Conv2d(l, m, 3, stride=2, padding=0, bias=False),
+            Conv2d(k, l_, 3, stride=1, padding=1, bias=False),
+            Conv2d(l_, m, 3, stride=2, padding=0, bias=False),
         )
         self.branch_2 = nn.MaxPool2d(3, stride=2, padding=0)
 
@@ -31,11 +37,12 @@ class ReductionA(nn.Module):
         x0 = self.branch_0(x)
         x1 = self.branch_1(x)
         x2 = self.branch_2(x)
-        return torch.cat((x0, x1, x2), dim=1) # 17 x 17 x 1024
+        return torch.cat((x0, x1, x2), dim=1)  # 17 x 17 x 1024
+
 
 class Stem(nn.Module):
     def __init__(self, in_channels):
-        super(Stem, self).__init__()
+        super().__init__()
         self.conv2d_1a_3x3 = Conv2d(in_channels, 32, 3, stride=2, padding=0, bias=False)
 
         self.conv2d_2a_3x3 = Conv2d(32, 32, 3, stride=1, padding=0, bias=False)
@@ -52,31 +59,31 @@ class Stem(nn.Module):
             Conv2d(160, 64, 1, stride=1, padding=0, bias=False),
             Conv2d(64, 64, (1, 7), stride=1, padding=(0, 3), bias=False),
             Conv2d(64, 64, (7, 1), stride=1, padding=(3, 0), bias=False),
-            Conv2d(64, 96, 3, stride=1, padding=0, bias=False)
+            Conv2d(64, 96, 3, stride=1, padding=0, bias=False),
         )
 
         self.mixed_5a_branch_0 = Conv2d(192, 192, 3, stride=2, padding=0, bias=False)
         self.mixed_5a_branch_1 = nn.MaxPool2d(3, stride=2, padding=0)
 
     def forward(self, x):
-        x = self.conv2d_1a_3x3(x) # 149 x 149 x 32
-        x = self.conv2d_2a_3x3(x) # 147 x 147 x 32
-        x = self.conv2d_2b_3x3(x) # 147 x 147 x 64
+        x = self.conv2d_1a_3x3(x)  # 149 x 149 x 32
+        x = self.conv2d_2a_3x3(x)  # 147 x 147 x 32
+        x = self.conv2d_2b_3x3(x)  # 147 x 147 x 64
         x0 = self.mixed_3a_branch_0(x)
         x1 = self.mixed_3a_branch_1(x)
-        x = torch.cat((x0, x1), dim=1) # 73 x 73 x 160
+        x = torch.cat((x0, x1), dim=1)  # 73 x 73 x 160
         x0 = self.mixed_4a_branch_0(x)
         x1 = self.mixed_4a_branch_1(x)
-        x = torch.cat((x0, x1), dim=1) # 71 x 71 x 192
+        x = torch.cat((x0, x1), dim=1)  # 71 x 71 x 192
         x0 = self.mixed_5a_branch_0(x)
         x1 = self.mixed_5a_branch_1(x)
-        x = torch.cat((x0, x1), dim=1) # 35 x 35 x 384
+        x = torch.cat((x0, x1), dim=1)  # 35 x 35 x 384
         return x
 
 
 class InceptionA(nn.Module):
     def __init__(self, in_channels):
-        super(InceptionA, self).__init__()
+        super().__init__()
         self.branch_0 = Conv2d(in_channels, 96, 1, stride=1, padding=0, bias=False)
         self.branch_1 = nn.Sequential(
             Conv2d(in_channels, 64, 1, stride=1, padding=0, bias=False),
@@ -89,7 +96,7 @@ class InceptionA(nn.Module):
         )
         self.brance_3 = nn.Sequential(
             nn.AvgPool2d(3, 1, padding=1, count_include_pad=False),
-            Conv2d(384, 96, 1, stride=1, padding=0, bias=False)
+            Conv2d(384, 96, 1, stride=1, padding=0, bias=False),
         )
 
     def forward(self, x):
@@ -102,7 +109,7 @@ class InceptionA(nn.Module):
 
 class InceptionB(nn.Module):
     def __init__(self, in_channels):
-        super(InceptionB, self).__init__()
+        super().__init__()
         self.branch_0 = Conv2d(in_channels, 384, 1, stride=1, padding=0, bias=False)
         self.branch_1 = nn.Sequential(
             Conv2d(in_channels, 192, 1, stride=1, padding=0, bias=False),
@@ -114,12 +121,13 @@ class InceptionB(nn.Module):
             Conv2d(192, 192, (7, 1), stride=1, padding=(3, 0), bias=False),
             Conv2d(192, 224, (1, 7), stride=1, padding=(0, 3), bias=False),
             Conv2d(224, 224, (7, 1), stride=1, padding=(3, 0), bias=False),
-            Conv2d(224, 256, (1, 7), stride=1, padding=(0, 3), bias=False)
+            Conv2d(224, 256, (1, 7), stride=1, padding=(0, 3), bias=False),
         )
         self.branch_3 = nn.Sequential(
             nn.AvgPool2d(3, stride=1, padding=1, count_include_pad=False),
-            Conv2d(in_channels, 128, 1, stride=1, padding=0, bias=False)
+            Conv2d(in_channels, 128, 1, stride=1, padding=0, bias=False),
         )
+
     def forward(self, x):
         x0 = self.branch_0(x)
         x1 = self.branch_1(x)
@@ -131,7 +139,7 @@ class InceptionB(nn.Module):
 class ReductionB(nn.Module):
     # 17 -> 8
     def __init__(self, in_channels):
-        super(ReductionB, self).__init__()
+        super().__init__()
         self.branch_0 = nn.Sequential(
             Conv2d(in_channels, 192, 1, stride=1, padding=0, bias=False),
             Conv2d(192, 192, 3, stride=2, padding=0, bias=False),
@@ -140,7 +148,7 @@ class ReductionB(nn.Module):
             Conv2d(in_channels, 256, 1, stride=1, padding=0, bias=False),
             Conv2d(256, 256, (1, 7), stride=1, padding=(0, 3), bias=False),
             Conv2d(256, 320, (7, 1), stride=1, padding=(3, 0), bias=False),
-            Conv2d(320, 320, 3, stride=2, padding=0, bias=False)
+            Conv2d(320, 320, 3, stride=2, padding=0, bias=False),
         )
         self.branch_2 = nn.MaxPool2d(3, stride=2, padding=0)
 
@@ -153,7 +161,7 @@ class ReductionB(nn.Module):
 
 class InceptionC(nn.Module):
     def __init__(self, in_channels):
-        super(InceptionC, self).__init__()
+        super().__init__()
         self.branch_0 = Conv2d(in_channels, 256, 1, stride=1, padding=0, bias=False)
 
         self.branch_1 = Conv2d(in_channels, 384, 1, stride=1, padding=0, bias=False)
@@ -170,7 +178,7 @@ class InceptionC(nn.Module):
 
         self.branch_3 = nn.Sequential(
             nn.AvgPool2d(3, stride=1, padding=1, count_include_pad=False),
-            Conv2d(in_channels, 256, 1, stride=1, padding=0, bias=False)
+            Conv2d(in_channels, 256, 1, stride=1, padding=0, bias=False),
         )
 
     def forward(self, x):
@@ -184,31 +192,30 @@ class InceptionC(nn.Module):
         x2_2 = self.branch_2_2(x2)
         x2 = torch.cat((x2_1, x2_2), dim=1)
         x3 = self.branch_3(x)
-        return torch.cat((x0, x1, x2, x3), dim=1) # 8 x 8 x 1536
+        return torch.cat((x0, x1, x2, x3), dim=1)  # 8 x 8 x 1536
 
 
 class InceptionV4(BaseBackbone):
-    def __init__(self, backbone_config: InceptionResNetV2Config):
-        super().__init__(backbone_config)        
-        self.k=backbone_config.k
-        self.l=backbone_config.l 
-        self.m=backbone_config.m 
-        self.n=backbone_config.n
-        
+    def __init__(self, backbone_config: BackboneConfig):
+        super().__init__(backbone_config)
+        self.k = backbone_config.k
+        self.l_ = backbone_config.l
+        self.m = backbone_config.m
+        self.n = backbone_config.n
+
         blocks = []
         blocks.append(Stem(in_channels=3))
-        for i in range(4):
+        for _ in range(4):
             blocks.append(InceptionA(384))
-        blocks.append(ReductionA(384, self.k, self.l, self.m, self.n))
-        for i in range(7):
+        blocks.append(ReductionA(384, self.k, self.l_, self.m, self.n))
+        for _ in range(7):
             blocks.append(InceptionB(1024))
         blocks.append(ReductionB(1024))
-        for i in range(3):
+        for _ in range(3):
             blocks.append(InceptionC(1536))
         self.features = nn.Sequential(*blocks)
         self.conv = Conv2d(1536, self.embedding_size, 1, stride=1, padding=0, bias=False)
         self.global_average_pooling = nn.AdaptiveAvgPool2d((1, 1))
-
 
     def forward(self, x):
         x = self.features(x)
