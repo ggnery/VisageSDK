@@ -27,7 +27,7 @@ def _minimal_trainer_yaml() -> dict:
 
 @pytest.fixture
 def trainer_yaml(tmp_path):
-    def _make(extra: dict = None) -> Path:
+    def _make(extra: dict | None = None) -> Path:
         data = _minimal_trainer_yaml()
         if extra:
             data.update(extra)

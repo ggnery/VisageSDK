@@ -46,7 +46,9 @@ class TestBaseConfig:
     def test_explicit_attr_takes_precedence(self, config_file):
         path = config_file({"device": "cpu"})
         cfg = BaseConfig(str(path))
-        cfg.device = "cuda"  # explicitly set
+        # BaseConfig has no static `device` attr; subclasses populate concrete
+        # attrs via __dict__ during their own __init__.
+        cfg.__dict__["device"] = "cuda"
         assert cfg.device == "cuda"
 
     def test_get_config_string_includes_class_and_keys(self, config_file):
@@ -60,7 +62,7 @@ class TestBaseConfig:
     def test_get_config_string_dedups_when_attr_set_explicitly(self, config_file):
         path = config_file({"x": 1})
         cfg = BaseConfig(str(path))
-        cfg.x = 2  # overrides via __dict__
+        cfg.__dict__["x"] = 2  # overrides via __dict__
         s = cfg.get_config_string()
         # Only one "x: ..." line should appear (the explicit one)
         assert s.count("x: ") == 1

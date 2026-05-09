@@ -27,8 +27,21 @@ dev = [
     "pyright>=1.1.409",
 ]
 
-[tool.uv]
-package = false
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# `src/` is a flat collection of top-level packages (`config`, `backbone`, ...)
+# rather than a single namespace; `package-dir = {"" = "src"}` exposes each of
+# them at the top level after `uv sync`, removing every sys.path hack from the
+# entry-point scripts (train.py, eval.py, gui/app.py, tests/conftest.py).
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = ["registry"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["tests*", "gui*"]
 
 [tool.uv.sources]
 # Override here if a custom torch wheel index is needed (CUDA-specific etc.)
@@ -55,46 +68,20 @@ select = [
     "UP",   # pyupgrade
     "SIM",  # flake8-simplify
 ]
-ignore = [
-    "E501",   # line-too-long: handled by formatter
-    "B008",   # do not perform function calls in argument defaults
-]
-
-[tool.ruff.lint.per-file-ignores]
-# These scripts insert src/ into sys.path before importing project code.
-"train.py" = ["E402"]
-"eval.py" = ["E402"]
-"gui/app.py" = ["E402"]
-"gui/run_manager.py" = []
-"tests/conftest.py" = ["E402"]
-# Tests can use ambiguous variable names freely
-"tests/**" = ["E741"]
-# Original-paper variable names (k, l, m, n) match the architecture diagrams.
-"src/backbone/inception_resnet_v2.py" = ["E741"]
-"src/backbone/inception_v4.py" = ["E741"]
 
 [tool.pyright]
 include = ["src", "gui", "tests", "train.py", "eval.py"]
 exclude = ["**/__pycache__", "**/.venv", "runs", "notebooks"]
-extraPaths = ["src"]
 pythonVersion = "3.12"
 venvPath = "."
 venv = ".venv"
 typeCheckingMode = "basic"
-# These reports are noisy without buying us much — the framework leans
-# heavily on YAML-driven attribute access via BaseConfig.__getattr__,
-# and torch re-exports many names without listing them in __all__.
-reportMissingImports = "none"
-reportMissingModuleSource = "none"
-reportUnusedImport = "none"  # ruff (F401) handles real dead imports
-reportUnusedVariable = "none"
-reportAttributeAccessIssue = "none"
-reportPrivateImportUsage = "none"
-reportArgumentType = "warning"
-reportGeneralTypeIssues = "warning"
 
-[[tool.pyright.executionEnvironments]]
-# Tests use minimal Stub classes that duck-type the real components;
-# pyright's nominal-typing complaints there are false positives.
-root = "tests"
-reportArgumentType = "none"
+# torch's __init__.py re-exports many runtime-public names (`torch.cat`,
+# `torch.device`, `torch.tensor`, ...) without listing them in `__all__`.
+# Pyright then flags every reference to them (and `from torch import cat`)
+# as `reportPrivateImportUsage`. They are NOT private — this is a known
+# torch packaging quirk. This single project-wide override is the cleanest
+# correct fix; the alternative is sprinkling 100+ per-line ignores that
+# don't reflect any real safety concern.
+reportPrivateImportUsage = "none"

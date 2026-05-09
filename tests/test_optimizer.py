@@ -4,24 +4,34 @@ import pytest
 import torch
 import torch.nn as nn
 
+from backbone.base_backbone import BaseBackbone
+from config.trainer.trainer_config import TrainerConfig
+from loss.base_loss import BaseLoss
 from tools.optimizer import build_optimizer
 
 
-class StubBackbone(nn.Module):
+class StubBackbone(BaseBackbone):
+    """Real BaseBackbone subclass with parameters but no config dependency."""
+
     def __init__(self):
-        super().__init__()
+        nn.Module.__init__(self)
         self.features = nn.Sequential(nn.Linear(8, 4), nn.Linear(4, 2))
         self.last_linear = nn.Linear(2, 4)
 
 
-class StubLoss(nn.Module):
+class StubLoss(BaseLoss):
+    """Real BaseLoss subclass with a single trainable parameter."""
+
     def __init__(self):
-        super().__init__()
+        nn.Module.__init__(self)
         self.weight = nn.Parameter(torch.randn(4))
 
 
-class StubTrainerConfig:
+class StubTrainerConfig(TrainerConfig):
+    """Real TrainerConfig subclass with the optimizer fields set directly."""
+
     def __init__(self, optimizer_type="SGD", optimizer_params=None, optimizer_param_groups=None):
+        # Skip TrainerConfig.__init__ — we only need optimizer-related fields here.
         self.optimizer_type = optimizer_type
         self.optimizer_params = optimizer_params or {"lr": 0.01}
         self.optimizer_param_groups = optimizer_param_groups

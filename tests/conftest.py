@@ -1,24 +1,40 @@
 """Shared pytest fixtures.
 
-This file is loaded automatically by pytest. It puts `src/` on sys.path so
-test modules can import `registry`, `tools.metrics`, etc. directly, and
-provides reusable on-disk fixtures (image folders, LFW pairs, identification
-gallery/probe layouts).
+The project is editable-installed (see pyproject.toml's
+`[tool.setuptools] package-dir = {"" = "src"}`), so test modules can
+import `registry`, `tools.metrics`, etc. directly without any sys.path
+gymnastics. This file just provides reusable on-disk fixtures and a
+tiny model to drive evaluator/trainer tests.
 """
 
 from __future__ import annotations
 
-import sys
+import importlib
 from pathlib import Path
+from types import SimpleNamespace
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SRC = REPO_ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+import pytest
+import torch
+from PIL import Image
+from torchvision import transforms
 
-import pytest  # noqa: E402
-import torch  # noqa: E402
-from PIL import Image  # noqa: E402
+from transformation.base_transformation import BaseTransformation
+
+
+class _PassthroughTransformation(BaseTransformation):
+    """Real BaseTransformation subclass for tests — bypasses the parent's
+    resize step and just emits a ToTensor pipeline so tests can pass it
+    anywhere a `BaseTransformation` is expected without touching
+    `BaseTransformation.__init__`'s config dependency.
+    """
+
+    def __init__(self) -> None:
+        self.transform = transforms.Compose([transforms.ToTensor()])
+
+
+@pytest.fixture
+def passthrough_transformation() -> _PassthroughTransformation:
+    return _PassthroughTransformation()
 
 
 def _make_image(path: Path, color: tuple[int, int, int]) -> None:
@@ -82,20 +98,26 @@ def tmp_identification(tmp_path) -> Path:
     return tmp_path
 
 
+_COMPONENT_PACKAGES = (
+    "backbone",
+    "batch_sampler",
+    "dataset.eval",
+    "dataset.train_val",
+    "early_stopper",
+    "evaluator",
+    "loss",
+    "transformation",
+)
+
+
 @pytest.fixture
 def populated_registries():
-    """Force side-effect imports so all registries are populated.
+    """Force side-effect imports so every registry is populated.
 
-    Returns a tuple of registry handles for convenient access.
+    Returns a SimpleNamespace exposing each registry as an attribute.
     """
-    import backbone  # noqa: F401
-    import batch_sampler  # noqa: F401
-    import dataset.eval  # noqa: F401
-    import dataset.train_val  # noqa: F401
-    import early_stopper  # noqa: F401
-    import evaluator  # noqa: F401
-    import loss  # noqa: F401
-    import transformation  # noqa: F401
+    for pkg in _COMPONENT_PACKAGES:
+        importlib.import_module(pkg)
     from registry import (
         BACKBONES,
         DATASETS,
@@ -107,19 +129,16 @@ def populated_registries():
         TRANSFORMATIONS,
     )
 
-    class Bag:
-        pass
-
-    bag = Bag()
-    bag.BACKBONES = BACKBONES
-    bag.LOSSES = LOSSES
-    bag.DATASETS = DATASETS
-    bag.EVAL_DATASETS = EVAL_DATASETS
-    bag.SAMPLERS = SAMPLERS
-    bag.EARLY_STOPPERS = EARLY_STOPPERS
-    bag.TRANSFORMATIONS = TRANSFORMATIONS
-    bag.EVALUATORS = EVALUATORS
-    return bag
+    return SimpleNamespace(
+        BACKBONES=BACKBONES,
+        LOSSES=LOSSES,
+        DATASETS=DATASETS,
+        EVAL_DATASETS=EVAL_DATASETS,
+        SAMPLERS=SAMPLERS,
+        EARLY_STOPPERS=EARLY_STOPPERS,
+        TRANSFORMATIONS=TRANSFORMATIONS,
+        EVALUATORS=EVALUATORS,
+    )
 
 
 class _TinyBackbone(torch.nn.Module):

@@ -1,10 +1,7 @@
+import importlib
+
 import torch
 
-# Side-effect imports populate the registry.
-import backbone  # noqa: F401
-import dataset.eval  # noqa: F401
-import evaluator  # noqa: F401
-import transformation  # noqa: F401
 from config.backbone.base_backbone_config import BackboneConfig
 from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
 from config.env_eval_config import ENVEvalConfig
@@ -16,6 +13,10 @@ from registry import (
     EVALUATORS,
     TRANSFORMATIONS,
 )
+
+# Trigger registry population by importing each component package for side effects.
+for _component_pkg in ("backbone", "dataset.eval", "evaluator", "transformation"):
+    importlib.import_module(_component_pkg)
 
 
 class EvaluatorBuilder:

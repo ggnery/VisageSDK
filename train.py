@@ -1,9 +1,3 @@
-import sys
-from pathlib import Path
-
-src_path = Path(__file__).parent
-sys.path.insert(0, str(src_path / "src"))
-
 from config import ENVConfig
 from tools.trainer_builder import TrainerBuilder
 

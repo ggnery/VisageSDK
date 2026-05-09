@@ -6,25 +6,13 @@ Run with:
 
 from __future__ import annotations
 
-import sys
+import importlib
 import time
 from pathlib import Path
 
 import streamlit as st
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
-
-# Side-effect imports populate registries.
-import backbone  # noqa: F401
-import batch_sampler  # noqa: F401
-import dataset.eval  # noqa: F401
-import dataset.train_val  # noqa: F401
-import early_stopper  # noqa: F401
-import evaluator  # noqa: F401
-import loss  # noqa: F401
-import transformation  # noqa: F401
 from gui.run_manager import (
     RunHandle,
     find_event_files,
@@ -49,6 +37,20 @@ from registry import (
     TRANSFORMATIONS,
 )
 
+# Trigger registry population by importing each component package for side effects.
+for _component_pkg in (
+    "backbone",
+    "batch_sampler",
+    "dataset.eval",
+    "dataset.train_val",
+    "early_stopper",
+    "evaluator",
+    "loss",
+    "transformation",
+):
+    importlib.import_module(_component_pkg)
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 RUNS_PARENT = REPO_ROOT / "runs"
 CONFIGS_DIR = REPO_ROOT / "configs"
 

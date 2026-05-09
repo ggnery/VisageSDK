@@ -164,9 +164,10 @@ class Trainer:
         return SummaryWriter(log_dir=str(log_dir))
 
     def train(self):
-        # Using self.epoch as the loop variable is intentional: it lets save_checkpoint
-        # / save_stats / early_stopper see the current epoch outside this method too.
-        for self.epoch in range(self.epoch, self.num_epochs + 1):  # noqa: B020
+        for epoch in range(self.epoch, self.num_epochs + 1):
+            # save_checkpoint / save_stats / early_stopper read self.epoch, so
+            # update it once per iteration.
+            self.epoch = epoch
             self._apply_unfreeze_schedule(self.epoch)
             train_loss, train_stats = self.train_epoch()
             val_loss, val_stats = self.validate_epoch()
@@ -367,7 +368,9 @@ class Trainer:
             self.writer.add_scalar(f"val_stats/{k}", v, self.epoch)
 
     def _checkpoint_name(self, suffix: str) -> str:
-        return f"{self.backbone.__class__.__name__}_{self.loss.__class__.__name__}_{self.dataset_class_name}_{suffix}.pth"
+        bb = self.backbone.__class__.__name__
+        ls = self.loss.__class__.__name__
+        return f"{bb}_{ls}_{self.dataset_class_name}_{suffix}.pth"
 
     def save_checkpoint(self, train_loss: float, val_loss: float, checkpoint_name: str):
         checkpoint = {
@@ -408,9 +411,8 @@ class Trainer:
         self.epoch = checkpoint["epoch"] + 1
         self.best_val_loss = checkpoint["val_loss"]
 
-        self.logger.info(
-            f"Checkpoint {checkpoint_path} for backbone {self.backbone.__class__.__name__} successfully loaded"
-        )
+        bb_name = self.backbone.__class__.__name__
+        self.logger.info(f"Checkpoint {checkpoint_path} for backbone {bb_name} successfully loaded")
         self.logger.info(f"Resuming train in epoch {self.epoch}")
 
     def save_stats(

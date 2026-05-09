@@ -9,7 +9,6 @@ import math
 
 import pytest
 import yaml
-from torchvision import transforms
 
 from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
 from config.evaluator.base_evaluator_config import EvaluatorConfig
@@ -17,10 +16,7 @@ from dataset.eval.identification_dataset import IdentificationDataset
 from dataset.eval.lfw_pairs_dataset import LFWPairsDataset
 from evaluator.identification_evaluator import IdentificationEvaluator
 from evaluator.verification_evaluator import VerificationEvaluator
-
-
-class _Tx:
-    transform = transforms.Compose([transforms.ToTensor()])
+from tests.conftest import _PassthroughTransformation as _Tx
 
 
 def _eval_cfg(tmp_path, overrides=None) -> EvaluatorConfig:

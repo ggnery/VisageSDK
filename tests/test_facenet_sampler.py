@@ -2,16 +2,12 @@
 
 import pytest
 import yaml
-from torchvision import transforms
 
 from batch_sampler.facenet_batch_sampler import FacenetBatchSampler
 from config.batch_sampler.base_batch_sampler_config import BatchSamplerConfig
 from config.dataset.train_val.base_train_val_dataset_config import TrainValDatasetConfig
 from dataset.train_val.image_folder_dataset import ImageFolderDataset
-
-
-class _Tx:
-    transform = transforms.Compose([transforms.ToTensor()])
+from tests.conftest import _PassthroughTransformation as _Tx
 
 
 @pytest.fixture

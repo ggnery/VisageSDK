@@ -214,8 +214,10 @@ class TestIdentificationMetrics:
             [0, 1, 1, 2]
         )  # probe-1 hits gallery-1 (rank 0) since sim[1,2]=0.9 highest
         # Recompute manually:
-        # probe 0: order = [0, 1, 2, 3], gallery_labels[order] = [0, 1, 1, 2]; first hit of label 0 is at index 0
-        # probe 1: order = [2, 3, 1, 0], gallery_labels[order] = [1, 2, 1, 0]; first hit of label 1 is at index 0
+        # probe 0: order = [0, 1, 2, 3], gallery_labels[order] = [0, 1, 1, 2];
+        #   first hit of label 0 is at index 0
+        # probe 1: order = [2, 3, 1, 0], gallery_labels[order] = [1, 2, 1, 0];
+        #   first hit of label 1 is at index 0
         cmc = cmc_curve(sim, probe_labels, gallery_labels, max_rank=4)
         assert cmc[0] == pytest.approx(1.0)
 

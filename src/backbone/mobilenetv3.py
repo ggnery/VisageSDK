@@ -19,9 +19,7 @@ def _make_divisible(v: float, divisor: int = 8) -> int:
 
 
 class Conv2dNormActivation(nn.Sequential):
-    """
-    A modular convolutional block that combines a 2D convolutional layer, optional normalization, and optional activation.
-    """
+    """A 2D convolutional block: Conv2d + optional norm + optional activation."""
 
     def __init__(
         self,
@@ -168,9 +166,11 @@ class InvertedResidual(nn.Module):
     def __init__(
         self,
         cnf: InvertedResidualConfig,
-        se_layer: Callable[..., nn.Module] = partial(SqueezeExcitation, scale_activation=nn.Hardsigmoid),
+        se_layer: Callable[..., nn.Module] | None = None,
     ):
         super().__init__()
+        if se_layer is None:
+            se_layer = partial(SqueezeExcitation, scale_activation=nn.Hardsigmoid)
         if cnf.stride not in [1, 2]:
             raise ValueError(f"stride should be 1 or 2 instead of {cnf.stride}")
 

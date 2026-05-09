@@ -23,13 +23,13 @@ class Conv2d(nn.Module):
 
 class ReductionA(nn.Module):
     # 35 -> 17
-    def __init__(self, in_channels, k, l, m, n):
+    def __init__(self, in_channels, k, l_, m, n):
         super().__init__()
         self.branch_0 = Conv2d(in_channels, n, 3, stride=2, padding=0, bias=False)
         self.branch_1 = nn.Sequential(
             Conv2d(in_channels, k, 1, stride=1, padding=0, bias=False),
-            Conv2d(k, l, 3, stride=1, padding=1, bias=False),
-            Conv2d(l, m, 3, stride=2, padding=0, bias=False),
+            Conv2d(k, l_, 3, stride=1, padding=1, bias=False),
+            Conv2d(l_, m, 3, stride=2, padding=0, bias=False),
         )
         self.branch_2 = nn.MaxPool2d(3, stride=2, padding=0)
 
@@ -177,7 +177,7 @@ class InceptionResNetV2(BaseBackbone):
     def __init__(self, backbone_config: BackboneConfig):
         super().__init__(backbone_config)
         self.k = backbone_config.k
-        self.l = backbone_config.l
+        self.l_ = backbone_config.l
         self.m = backbone_config.m
         self.n = backbone_config.n
         self.dropout_prob = 1 - backbone_config.dropout_keep
@@ -186,7 +186,7 @@ class InceptionResNetV2(BaseBackbone):
         blocks.append(Stem(in_channels=3))
         for _ in range(10):
             blocks.append(InceptionResNetA(320, 0.17))
-        blocks.append(ReductionA(320, self.k, self.l, self.m, self.n))
+        blocks.append(ReductionA(320, self.k, self.l_, self.m, self.n))
         for _ in range(20):
             blocks.append(InceptionResNetB(1088, 0.10))
         blocks.append(ReductionB(1088))

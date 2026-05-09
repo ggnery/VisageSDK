@@ -1,10 +1,6 @@
 import json
-import sys
 from datetime import datetime
 from pathlib import Path
-
-src_path = Path(__file__).parent
-sys.path.insert(0, str(src_path / "src"))
 
 from config import ENVEvalConfig
 from tools.evaluator_builder import EvaluatorBuilder

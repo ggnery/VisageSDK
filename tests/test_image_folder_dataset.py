@@ -4,17 +4,18 @@ from pathlib import Path
 
 import pytest
 import yaml
+from torchvision import transforms
 
 from config.dataset.train_val.base_train_val_dataset_config import TrainValDatasetConfig
 from dataset.train_val.image_folder_dataset import ImageFolderDataset, _scan_dir
+from transformation.base_transformation import BaseTransformation
 
 
-class StubTransformation:
-    """Minimal stub: just exposes a passthrough `transform` (lambda)."""
+class _PassthroughTransformation(BaseTransformation):
+    """Minimal real BaseTransformation subclass for tests — bypasses the
+    super().__init__ resize step and just emits a ToTensor pipeline."""
 
-    def __init__(self):
-        from torchvision import transforms
-
+    def __init__(self) -> None:
         self.transform = transforms.Compose([transforms.ToTensor()])
 
 
@@ -35,18 +36,18 @@ def dataset_config(tmp_imagefolder, tmp_path):
 
 class TestSplitArgument:
     def test_split_train_reads_train_dir(self, dataset_config, tmp_imagefolder):
-        ds = ImageFolderDataset(dataset_config, StubTransformation(), split="train")
+        ds = ImageFolderDataset(dataset_config, _PassthroughTransformation(), split="train")
         for _, path in ds.data:
             assert Path(path).is_relative_to(tmp_imagefolder / "train")
 
     def test_split_val_reads_val_dir(self, dataset_config, tmp_imagefolder):
-        ds = ImageFolderDataset(dataset_config, StubTransformation(), split="val")
+        ds = ImageFolderDataset(dataset_config, _PassthroughTransformation(), split="val")
         for _, path in ds.data:
             assert Path(path).is_relative_to(tmp_imagefolder / "val")
 
     def test_invalid_split_raises(self, dataset_config):
         with pytest.raises(ValueError, match="split must be one of"):
-            ImageFolderDataset(dataset_config, StubTransformation(), split="test")
+            ImageFolderDataset(dataset_config, _PassthroughTransformation(), split="test")
 
 
 class TestDeterminism:
@@ -67,19 +68,19 @@ class TestDeterminism:
 
     def test_label_to_idx_stable(self, dataset_config):
         """Same data → same label_to_idx mapping every time."""
-        ds1 = ImageFolderDataset(dataset_config, StubTransformation(), split="train")
-        ds2 = ImageFolderDataset(dataset_config, StubTransformation(), split="train")
+        ds1 = ImageFolderDataset(dataset_config, _PassthroughTransformation(), split="train")
+        ds2 = ImageFolderDataset(dataset_config, _PassthroughTransformation(), split="train")
         assert ds1.label_to_idx == ds2.label_to_idx
 
 
 class TestDataContents:
     def test_total_count_matches(self, dataset_config):
-        ds = ImageFolderDataset(dataset_config, StubTransformation(), split="train")
+        ds = ImageFolderDataset(dataset_config, _PassthroughTransformation(), split="train")
         # 3 classes × 4 images
         assert len(ds) == 12
 
     def test_label_map_groups_by_class(self, dataset_config):
-        ds = ImageFolderDataset(dataset_config, StubTransformation(), split="train")
+        ds = ImageFolderDataset(dataset_config, _PassthroughTransformation(), split="train")
         # All 3 classes should have entries; each with 4 indices
         assert len(ds.label_map) == 3
         for indices in ds.label_map.values():
@@ -88,7 +89,7 @@ class TestDataContents:
     def test_getitem_returns_label_and_tensor(self, dataset_config):
         import torch
 
-        ds = ImageFolderDataset(dataset_config, StubTransformation(), split="train")
+        ds = ImageFolderDataset(dataset_config, _PassthroughTransformation(), split="train")
         label, image = ds[0]
         assert isinstance(label, int)
         assert isinstance(image, torch.Tensor)

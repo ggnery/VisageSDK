@@ -6,11 +6,15 @@ import torch.nn as nn
 from torch.optim import SGD
 from torch.optim.lr_scheduler import LambdaLR, MultiStepLR, ReduceLROnPlateau, StepLR
 
+from config.trainer.trainer_config import TrainerConfig
 from tools.scheduler import build_scheduler
 
 
-class StubConfig:
+class StubConfig(TrainerConfig):
+    """Real TrainerConfig subclass with just the scheduler fields populated."""
+
     def __init__(self, lr_schedule_type, lr_schedule_params):
+        # Skip TrainerConfig.__init__; only the scheduler fields are read here.
         self.lr_schedule_type = lr_schedule_type
         self.lr_schedule_params = lr_schedule_params
 
