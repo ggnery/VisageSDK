@@ -1,10 +1,11 @@
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 from config.base_config import BaseConfig
 
 
 class TrainerConfig(BaseConfig):
     optimizer_type: str
     optimizer_params: Any
+    optimizer_param_groups: Optional[List[Dict[str, Any]]]
 
     lr_schedule_type: str
     lr_schedule_params: Any
@@ -29,11 +30,17 @@ class TrainerConfig(BaseConfig):
     num_epochs: int
     device: str
 
+    freeze_patterns: Optional[List[str]]
+    freeze_except: Optional[List[str]]
+    unfreeze_at_epoch: Dict[int, List[str]]
+
     def __init__(self, config_path: str) -> None:
         super().__init__(config_path)
 
-        self.optimizer_type = self._params["optimizer"]["type"]
-        self.optimizer_params = self._params["optimizer"]["params"]
+        optimizer_block = self._params["optimizer"]
+        self.optimizer_type = optimizer_block["type"]
+        self.optimizer_params = optimizer_block["params"]
+        self.optimizer_param_groups = optimizer_block.get("param_groups")
 
         self.lr_schedule_type = self._params["lr_schedule"]["type"]
         self.lr_schedule_params = self._params["lr_schedule"]["params"]
@@ -63,3 +70,11 @@ class TrainerConfig(BaseConfig):
         self.checkpoint_load_loss = load["loss"]
         self.checkpoint_load_scheduler = load["scheduler"]
         self.checkpoint_load_optimizer = load["optimizer"]
+
+        freeze = self._params.get("freeze") or {}
+        self.freeze_patterns = freeze.get("patterns")
+        self.freeze_except = freeze.get("except")
+        if self.freeze_patterns and self.freeze_except:
+            raise ValueError("freeze: provide either `patterns` or `except`, not both")
+        raw_schedule = freeze.get("unfreeze_at_epoch") or {}
+        self.unfreeze_at_epoch = {int(k): list(v) for k, v in raw_schedule.items()}

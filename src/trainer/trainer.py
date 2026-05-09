@@ -14,6 +14,8 @@ import logging
 import json
 from pathlib import Path
 
+from tools.freezer import log_freeze_state, unfreeze_by_patterns
+
 
 class Trainer:
     device: torch.device
@@ -104,6 +106,7 @@ class Trainer:
 
     def train(self):
         for self.epoch in range(self.epoch, self.num_epochs + 1):
+            self._apply_unfreeze_schedule()
             train_loss, train_stats = self.train_epoch()
             val_loss, val_stats = self.validate_epoch()
 
@@ -204,6 +207,17 @@ class Trainer:
         avg_loss = total_loss / total_samples
         epoch_stats = {k: v / n_batches for k, v in running_stats.items()}
         return avg_loss, epoch_stats
+
+    def _apply_unfreeze_schedule(self) -> None:
+        patterns = self.config.unfreeze_at_epoch.get(self.epoch)
+        if not patterns:
+            return
+        unfrozen = unfreeze_by_patterns(self.backbone, patterns)
+        if unfrozen:
+            self.logger.info(
+                f"Epoch {self.epoch}: unfroze {len(unfrozen)} params matching {patterns}"
+            )
+            log_freeze_state(self.backbone, self.logger)
 
     def _checkpoint_name(self, suffix: str) -> str:
         return f"{self.backbone.__class__.__name__}_{self.loss.__class__.__name__}_{self.dataset_class_name}_{suffix}.pth"

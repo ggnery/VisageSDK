@@ -18,6 +18,7 @@ from registry import (
     TRAIN_TRANSFORMATIONS,
     VAL_TRANSFORMATIONS,
 )
+from tools.freezer import freeze_by_patterns, log_freeze_state
 from tools.optimizer import build_optimizer
 from tools.scheduler import build_scheduler
 from trainer.trainer import Trainer
@@ -103,6 +104,14 @@ class TrainerBuilder:
         self.sampler = None
         if self.sampler_config is not None:
             self.sampler = SAMPLERS.get(self.env.sampler)(self.sampler_config, self.train_dataset)
+
+        if self.trainer_config.freeze_patterns or self.trainer_config.freeze_except:
+            freeze_by_patterns(
+                self.backbone,
+                patterns=self.trainer_config.freeze_patterns,
+                except_patterns=self.trainer_config.freeze_except,
+            )
+            log_freeze_state(self.backbone)
 
         self.optimizer = build_optimizer(self.backbone, self.loss, self.trainer_config)
         self.scheduler = build_scheduler(self.optimizer, self.trainer_config)
