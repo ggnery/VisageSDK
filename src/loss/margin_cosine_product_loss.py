@@ -21,8 +21,8 @@ class MarginCosineProductLoss(BaseLoss):
         self.s = loss_config.s  # Scale factor (default: 30.0)
         self.m = loss_config.m  # Cosine margin (default: 0.40)
 
-        # Weight matrix for classification
-        self.weight = nn.Parameter(torch.Tensor(self.out_features, self.in_features))
+        # Weight matrix for classification (xavier_uniform_ overwrites it next).
+        self.weight = nn.Parameter(torch.empty(self.out_features, self.in_features))
         self.criterion = nn.CrossEntropyLoss()
         nn.init.xavier_uniform_(self.weight)
 

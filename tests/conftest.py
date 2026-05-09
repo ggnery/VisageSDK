@@ -31,6 +31,11 @@ class _PassthroughTransformation(BaseTransformation):
     def __init__(self) -> None:
         self.transform = transforms.Compose([transforms.ToTensor()])
 
+    def build_transformation(self, transformation_config) -> list:
+        # Never reached because we override __init__, but required to
+        # satisfy BaseTransformation's @abstractmethod contract.
+        return [transforms.ToTensor()]
+
 
 @pytest.fixture
 def passthrough_transformation() -> _PassthroughTransformation:

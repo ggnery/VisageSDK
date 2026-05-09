@@ -72,7 +72,12 @@ class Trainer:
         self.early_stopper = early_stopper
         self.periodic_evaluator = periodic_evaluator
 
-        gen = make_dataloader_generator(config.seed)
+        # Two independent generators so train and val random states don't
+        # consume from each other (otherwise val shuffling depends on how
+        # many train batches were drawn, which makes per-epoch behaviour
+        # harder to reason about).
+        train_gen = make_dataloader_generator(config.seed)
+        val_gen = make_dataloader_generator(config.seed + 1 if config.seed is not None else None)
         worker_init = seed_worker if config.seed is not None else None
 
         if sampler is not None:
@@ -85,7 +90,7 @@ class Trainer:
                 batch_sampler=sampler,
                 pin_memory=True,
                 worker_init_fn=worker_init,
-                generator=gen,
+                generator=train_gen,
             )
         else:
             self.logger.info(
@@ -98,7 +103,7 @@ class Trainer:
                 shuffle=config.train_shuffle,
                 pin_memory=True,
                 worker_init_fn=worker_init,
-                generator=gen,
+                generator=train_gen,
             )
 
         self.val_loader = DataLoader(
@@ -108,7 +113,7 @@ class Trainer:
             shuffle=config.val_shuffle,
             pin_memory=True,
             worker_init_fn=worker_init,
-            generator=gen,
+            generator=val_gen,
         )
 
         self.backbone = backbone
@@ -262,7 +267,6 @@ class Trainer:
         total_loss = 0.0
         total_samples = 0
         running_stats: dict[str, float] = {}
-        n_batches = 0
 
         self.backbone.train()
         self.loss.train()
@@ -288,11 +292,13 @@ class Trainer:
             batch_size = embeddings.size(0)
             total_loss += loss.item() * batch_size
             total_samples += batch_size
-            n_batches += 1
 
+            # Weight stats by batch_size so the epoch summary matches the
+            # weighted-average loss exactly (otherwise a partial last batch
+            # gets the same weight as a full one).
             for k, v in batch_stats.items():
                 if isinstance(v, (int, float)):
-                    running_stats[k] = running_stats.get(k, 0.0) + float(v)
+                    running_stats[k] = running_stats.get(k, 0.0) + float(v) * batch_size
 
             pbar.set_postfix({"loss": loss.item()})
 
@@ -300,14 +306,13 @@ class Trainer:
             self.logger.warning("Train epoch saw zero samples; skipping averaging.")
             return 0.0, {}
         avg_loss = total_loss / total_samples
-        epoch_stats = {k: v / n_batches for k, v in running_stats.items()}
+        epoch_stats = {k: v / total_samples for k, v in running_stats.items()}
         return avg_loss, epoch_stats
 
     def validate_epoch(self) -> tuple[float, dict]:
         total_loss = 0.0
         total_samples = 0
         running_stats: dict[str, float] = {}
-        n_batches = 0
 
         self.backbone.eval()
         self.loss.eval()
@@ -325,11 +330,10 @@ class Trainer:
                 batch_size = embeddings.size(0)
                 total_loss += loss.item() * batch_size
                 total_samples += batch_size
-                n_batches += 1
 
                 for k, v in batch_stats.items():
                     if isinstance(v, (int, float)):
-                        running_stats[k] = running_stats.get(k, 0.0) + float(v)
+                        running_stats[k] = running_stats.get(k, 0.0) + float(v) * batch_size
 
                 pbar.set_postfix({"loss": loss.item()})
 
@@ -337,7 +341,7 @@ class Trainer:
             self.logger.warning("Val epoch saw zero samples; skipping averaging.")
             return 0.0, {}
         avg_loss = total_loss / total_samples
-        epoch_stats = {k: v / n_batches for k, v in running_stats.items()}
+        epoch_stats = {k: v / total_samples for k, v in running_stats.items()}
         return avg_loss, epoch_stats
 
     def _maybe_run_periodic_eval(self) -> dict[str, float] | None:

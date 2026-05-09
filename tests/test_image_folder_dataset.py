@@ -4,19 +4,10 @@ from pathlib import Path
 
 import pytest
 import yaml
-from torchvision import transforms
 
 from config.dataset.train_val.base_train_val_dataset_config import TrainValDatasetConfig
 from dataset.train_val.image_folder_dataset import ImageFolderDataset, _scan_dir
-from transformation.base_transformation import BaseTransformation
-
-
-class _PassthroughTransformation(BaseTransformation):
-    """Minimal real BaseTransformation subclass for tests — bypasses the
-    super().__init__ resize step and just emits a ToTensor pipeline."""
-
-    def __init__(self) -> None:
-        self.transform = transforms.Compose([transforms.ToTensor()])
+from tests.conftest import _PassthroughTransformation
 
 
 @pytest.fixture

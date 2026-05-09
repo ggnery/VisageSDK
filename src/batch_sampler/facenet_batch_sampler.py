@@ -7,18 +7,14 @@ from dataset.train_val.base_train_val_dataset import BaseTrainValDataset
 
 
 class FacenetBatchSampler(BaseBatchSampler):
-    """
-    Custom batch sampler for FaceNet training.
-    """
+    """Custom batch sampler for FaceNet training."""
 
     def __init__(self, config: BatchSamplerConfig, train_dataset: BaseTrainValDataset):
         """
-        Initialize the sampler.
-
         Args:
-            dataset: BaseDataset instance
-            faces_per_identity: Number of faces per identity in batch
-            num_identities_per_batch: Number of identities per batch
+            config: BatchSamplerConfig exposing `faces_per_identity` and
+                `num_identities_per_batch` from YAML.
+            train_dataset: BaseTrainValDataset providing `label_map`.
         """
         super().__init__(train_dataset)
         self.faces_per_identity = config.faces_per_identity
@@ -36,21 +32,28 @@ class FacenetBatchSampler(BaseBatchSampler):
 
         self.num_valid_identities = len(self.valid_identities)
 
+        # Use a per-instance Random so the sampler's order doesn't depend on
+        # whoever else touched the global `random` state since `set_seed`.
+        # We seed it from `random.random()` (which set_seed has initialized
+        # deterministically) so reproducibility is preserved end-to-end.
+        self._rng = random.Random(random.random())
+
     @override
     def __iter__(self):
         """Generate batches according to FaceNet sampling strategy."""
         # Shuffle identities for each epoch
         identity_order = self.valid_identities.copy()
-        random.shuffle(identity_order)
+        self._rng.shuffle(identity_order)
 
         # Generate batches
         for i in range(0, len(identity_order), self.num_identities_per_batch):
             batch_identities = identity_order[i : i + self.num_identities_per_batch]
 
             if len(batch_identities) < self.num_identities_per_batch:
-                # For the last incomplete batch, add random identities
+                # Pad the last partial batch. `choices` (with replacement) tolerates
+                # `remaining > num_valid_identities`, which `sample` does not.
                 remaining = self.num_identities_per_batch - len(batch_identities)
-                extra_identities = random.sample(self.valid_identities, remaining)
+                extra_identities = self._rng.choices(self.valid_identities, k=remaining)
                 batch_identities.extend(extra_identities)
 
             # Sample faces for each identity
@@ -60,14 +63,14 @@ class FacenetBatchSampler(BaseBatchSampler):
 
                 # Sample with replacement if needed
                 if len(identity_samples) >= self.faces_per_identity:
-                    selected = random.sample(identity_samples, self.faces_per_identity)
+                    selected = self._rng.sample(identity_samples, self.faces_per_identity)
                 else:
-                    selected = random.choices(identity_samples, k=self.faces_per_identity)
+                    selected = self._rng.choices(identity_samples, k=self.faces_per_identity)
 
                 batch_indices.extend(selected)
 
             # Shuffle within batch for better mixing
-            random.shuffle(batch_indices)
+            self._rng.shuffle(batch_indices)
             yield batch_indices
 
     @override

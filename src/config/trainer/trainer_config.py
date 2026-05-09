@@ -89,7 +89,9 @@ class TrainerConfig(BaseConfig):
         freeze = self._params.get("freeze") or {}
         self.freeze_patterns = freeze.get("patterns")
         self.freeze_except = freeze.get("except")
-        if self.freeze_patterns and self.freeze_except:
+        # Use presence (not truthiness) so `patterns: []` + `except: [...]`
+        # is also rejected — almost certainly a user typo.
+        if self.freeze_patterns is not None and self.freeze_except is not None:
             raise ValueError("freeze: provide either `patterns` or `except`, not both")
         raw_schedule = freeze.get("unfreeze_at_epoch") or {}
         self.unfreeze_at_epoch = {int(k): list(v) for k, v in raw_schedule.items()}

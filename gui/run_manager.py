@@ -32,22 +32,26 @@ class RunHandle:
 
     @property
     def is_alive(self) -> bool:
+        """True iff the subprocess is still running. Side-effect free."""
         if self.process is None:
             return False
-        alive = self.process.poll() is None
-        # Close the log file once the subprocess has exited so we don't leak FDs
-        # across long Streamlit sessions.
-        if not alive and self.log_file is not None:
-            with contextlib.suppress(Exception):
-                self.log_file.close()
-            self.log_file = None
-        return alive
+        return self.process.poll() is None
 
     @property
     def returncode(self) -> int | None:
         if self.process is None:
             return None
         return self.process.poll()
+
+    def cleanup(self) -> None:
+        """Close the subprocess log file. Idempotent; safe to call repeatedly.
+        Invoke once the subprocess exits to avoid FD leaks across
+        long-running Streamlit sessions.
+        """
+        if self.log_file is not None:
+            with contextlib.suppress(Exception):
+                self.log_file.close()
+            self.log_file = None
 
 
 def make_run_dir(parent: Path, name: str | None = None) -> Path:
@@ -107,10 +111,7 @@ def stop_run(handle: RunHandle) -> None:
             handle.process.wait(timeout=10)
         except subprocess.TimeoutExpired:
             handle.process.kill()
-    if handle.log_file is not None:
-        with contextlib.suppress(Exception):
-            handle.log_file.close()
-        handle.log_file = None
+    handle.cleanup()
 
 
 def tail_log(log_path: Path | None, max_lines: int = 200) -> str:

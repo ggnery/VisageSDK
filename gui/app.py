@@ -238,6 +238,14 @@ def render_configure_tab() -> None:
             write_yaml(cfg_dir / "early_stopper.yaml", es_text)
 
         trainer_yaml = yaml.safe_load(trainer_text) or {}
+
+        def _ensure_dict(d: dict, key: str) -> dict:
+            """`setdefault(key, {})` returns the existing value, even if it's None
+            (e.g. user wrote `checkpoint: null`). This guarantees a dict back."""
+            if d.get(key) is None:
+                d[key] = {}
+            return d[key]
+
         if override_epochs > 0:
             trainer_yaml["num_epochs"] = int(override_epochs)
         if override_device:
@@ -245,14 +253,16 @@ def render_configure_tab() -> None:
         if override_seed >= 0:
             trainer_yaml["seed"] = int(override_seed)
         if override_amp != "keep":
-            trainer_yaml.setdefault("amp", {})["enabled"] = override_amp == "enable"
+            _ensure_dict(trainer_yaml, "amp")["enabled"] = override_amp == "enable"
         if override_tb != "keep":
-            trainer_yaml.setdefault("logging", {})["tensorboard"] = override_tb == "enable"
+            _ensure_dict(trainer_yaml, "logging")["tensorboard"] = override_tb == "enable"
         # Force checkpoints into the run dir
-        trainer_yaml.setdefault("checkpoint", {}).setdefault("save", {})["dir"] = str(run_dir / "checkpoints")
-        trainer_yaml.setdefault("logging", {}).setdefault("log_dir", str(run_dir / "tb"))
-        if "tensorboard" not in trainer_yaml["logging"]:
-            trainer_yaml["logging"]["tensorboard"] = True
+        ckpt = _ensure_dict(trainer_yaml, "checkpoint")
+        _ensure_dict(ckpt, "save")["dir"] = str(run_dir / "checkpoints")
+        logging_block = _ensure_dict(trainer_yaml, "logging")
+        logging_block.setdefault("log_dir", str(run_dir / "tb"))
+        if "tensorboard" not in logging_block:
+            logging_block["tensorboard"] = True
 
         if use_periodic_eval:
             # All `pe_*` fields are assigned together inside the matching block above.
@@ -349,54 +359,63 @@ def render_monitor_tab() -> None:
         if handle.is_alive and handle.process is not None:
             st.success(f"Status: RUNNING — pid {handle.process.pid}")
         else:
+            # Subprocess finished; close its log handle now (idempotent).
+            handle.cleanup()
             rc = handle.returncode
             if rc == 0:
                 st.info("Status: COMPLETED")
             else:
                 st.error(f"Status: EXITED ({rc})")
 
-    # Charts
-    event_files = find_event_files(run_dir)
-    scalars = read_scalars(event_files)
+    # Charts and log are wrapped in a fragment so auto-refresh re-renders ONLY
+    # them (without freezing the controls above with `time.sleep`). When
+    # `auto_refresh` is off or the run is finished, run_every=None disables
+    # the periodic re-run.
+    auto_run_every = (
+        int(refresh_interval) if (st.session_state.auto_refresh and handle and handle.is_alive) else None
+    )
 
-    if not scalars:
-        st.info("No TensorBoard events yet. Charts will appear once the first epoch logs.")
-    else:
-        loss_tags = sorted(t for t in scalars if t.startswith("loss/"))
-        eval_tags = sorted(t for t in scalars if t.startswith("eval/"))
-        train_stat_tags = sorted(t for t in scalars if t.startswith("train_stats/"))
-        val_stat_tags = sorted(t for t in scalars if t.startswith("val_stats/"))
-        lr_tags = sorted(t for t in scalars if t == "lr")
+    @st.fragment(run_every=auto_run_every)
+    def _live_section() -> None:
+        event_files = find_event_files(run_dir)
+        scalars = read_scalars(event_files)
 
-        def plot_group(title: str, tags: list[str]) -> None:
-            if not tags:
-                return
-            st.subheader(title)
-            data = {tag: dict(scalars[tag]) for tag in tags}
-            steps = sorted({s for series in data.values() for s in series})
-            chart_data: dict[str, list] = {tag: [data[tag].get(s, None) for s in steps] for tag in tags}
-            chart_data["epoch"] = list(steps)
-            import pandas as pd
+        if not scalars:
+            st.info("No TensorBoard events yet. Charts will appear once the first epoch logs.")
+        else:
+            loss_tags = sorted(t for t in scalars if t.startswith("loss/"))
+            eval_tags = sorted(t for t in scalars if t.startswith("eval/"))
+            train_stat_tags = sorted(t for t in scalars if t.startswith("train_stats/"))
+            val_stat_tags = sorted(t for t in scalars if t.startswith("val_stats/"))
+            lr_tags = sorted(t for t in scalars if t == "lr")
 
-            df = pd.DataFrame(chart_data).set_index("epoch")
-            st.line_chart(df)
+            def plot_group(title: str, tags: list[str]) -> None:
+                if not tags:
+                    return
+                st.subheader(title)
+                data = {tag: dict(scalars[tag]) for tag in tags}
+                steps = sorted({s for series in data.values() for s in series})
+                chart_data: dict[str, list] = {tag: [data[tag].get(s, None) for s in steps] for tag in tags}
+                chart_data["epoch"] = list(steps)
+                import pandas as pd
 
-        plot_group("Loss", loss_tags)
-        plot_group("Learning rate", lr_tags)
-        plot_group("Eval metrics", eval_tags)
-        plot_group("Training stats", train_stat_tags)
-        plot_group("Validation stats", val_stat_tags)
+                df = pd.DataFrame(chart_data).set_index("epoch")
+                st.line_chart(df)
 
-    st.divider()
-    st.subheader("Log tail")
-    log_path = run_dir / "train.log"
-    if not log_path.exists():
-        log_path = next(iter(run_dir.glob("*.log")), None)
-    st.code(tail_log(log_path, max_lines=200) or "(no log yet)", language="text")
+            plot_group("Loss", loss_tags)
+            plot_group("Learning rate", lr_tags)
+            plot_group("Eval metrics", eval_tags)
+            plot_group("Training stats", train_stat_tags)
+            plot_group("Validation stats", val_stat_tags)
 
-    if st.session_state.auto_refresh and handle and handle.is_alive:
-        time.sleep(int(refresh_interval))
-        st.rerun()
+        st.divider()
+        st.subheader("Log tail")
+        log_path = run_dir / "train.log"
+        if not log_path.exists():
+            log_path = next(iter(run_dir.glob("*.log")), None)
+        st.code(tail_log(log_path, max_lines=200) or "(no log yet)", language="text")
+
+    _live_section()
 
 
 # =============================================================================

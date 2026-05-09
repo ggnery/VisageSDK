@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 
 from torchvision import transforms
 
@@ -14,12 +14,13 @@ class BaseTransformation(ABC):
             + self.build_transformation(transformation_config)
         )
 
+    @abstractmethod
     def build_transformation(self, transformation_config: TransformationConfig) -> list:
-        """Override to build a custom transformation pipeline.
+        """Build the transformation pipeline applied AFTER the implicit Resize.
 
         Args:
             transformation_config: config object exposing YAML keys as attrs.
         Returns:
             list of torchvision transforms appended after the resize.
         """
-        return []
+        ...
