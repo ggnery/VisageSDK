@@ -1,0 +1,4 @@
+# Identification dataset layout:
+#   <eval_dir>/gallery/<person>/*.jpg   one or more enrollment images per person
+#   <eval_dir>/probe/<person>/*.jpg     query images to match against the gallery
+eval_dir: "./data/identification_eval"

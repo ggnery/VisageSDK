@@ -1,0 +1,9 @@
+device: cuda
+batch_size: 128
+num_workers: 4
+
+# Distance metric: cosine | euclidean
+distance: cosine
+
+# TAR@FAR points to report
+far_targets: [1.0e-3, 1.0e-4, 1.0e-5, 1.0e-6]
