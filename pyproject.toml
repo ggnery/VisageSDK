@@ -17,6 +17,7 @@ dependencies = [
     "streamlit>=1.57",
     "pandas>=3.0",
     "pillow>=12",
+    "onnx>=1.20",
 ]
 
 [dependency-groups]

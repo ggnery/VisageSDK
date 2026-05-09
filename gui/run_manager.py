@@ -99,6 +99,10 @@ def launch_evaluation(env: dict[str, str], run_dir: Path) -> RunHandle:
     """Spawn `eval.py` with the given env. Logs go to <run_dir>/eval.log."""
     log_path = run_dir / "eval.log"
     process, log_file = _spawn("eval.py", env, log_path)
+    # Mirror launch_training so Monitor Eval can recover which checkpoint
+    # / configs an eval run referenced even after the Streamlit session
+    # ends and the in-memory RunHandle is gone.
+    (run_dir / "env.json").write_text(json.dumps(env, indent=2))
     return RunHandle(run_dir=run_dir, process=process, log_path=log_path, log_file=log_file, env=env)
 
 
@@ -154,10 +158,128 @@ def read_scalars(event_files: list[Path]) -> dict[str, list[tuple[int, float]]]:
     return aggregated
 
 
-def list_existing_runs(parent: Path) -> list[Path]:
-    if not parent.exists():
-        return []
-    return sorted([p for p in parent.iterdir() if p.is_dir()], reverse=True)
+def list_existing_runs(parent: Path, require_train_log: bool = True) -> list[Path]:
+    """List training run dirs newest-first.
+
+    Looks first under `parent / "trains"` (the canonical layout), then falls
+    back to direct children of `parent` (legacy layout). Identifies a run by
+    the presence of `train.log` so misplaced eval runs never leak in.
+    """
+    candidates: list[Path] = []
+    for root in (parent / "trains", parent):
+        if root.exists():
+            candidates.extend(p for p in root.iterdir() if p.is_dir())
+    if require_train_log:
+        candidates = [p for p in candidates if (p / "train.log").exists()]
+    # De-duplicate (a path discovered via both roots can't happen with the
+    # subdir layout, but the guard is cheap) while preserving newest-first.
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for p in sorted(candidates, reverse=True):
+        if p not in seen:
+            seen.add(p)
+            unique.append(p)
+    return unique
+
+
+def list_eval_runs(parent: Path) -> list[Path]:
+    """List eval run dirs under `parent / "evals"`, newest first.
+
+    Identifies an eval run by the presence of `eval.log`. Tolerant of
+    legacy layouts that placed eval runs directly under `parent`."""
+    evals_dir = parent / "evals"
+    candidates: list[Path] = []
+    for root in (evals_dir, parent):
+        if root.exists():
+            candidates.extend(p for p in root.iterdir() if p.is_dir() and (p / "eval.log").exists())
+    # De-duplicate (in case an eval run appears in both — shouldn't happen but
+    # cheap to guard) while preserving newest-first ordering.
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for p in sorted(candidates, reverse=True):
+        if p not in seen:
+            seen.add(p)
+            unique.append(p)
+    return unique
+
+
+def _resolve_legacy_run_path(candidate: Path, runs_root: Path) -> Path | None:
+    """Map a stale `runs/<X>/...` path to `runs/trains/<X>/...` if needed.
+
+    Train runs were originally created directly under `runs/`; recent
+    versions move them under `runs/trains/`. Paths captured in older
+    eval.logs still reference the legacy location and silently break the
+    results lookup. This recovers them by name."""
+    if candidate.exists():
+        return candidate
+    try:
+        # Path must start with `<runs_root>/<run_name>/...` to be eligible.
+        rel = candidate.relative_to(runs_root)
+    except ValueError:
+        return None
+    parts = rel.parts
+    if len(parts) < 2 or parts[0] in ("trains", "evals"):
+        return None
+    relocated = runs_root / "trains" / Path(*parts)
+    return relocated if relocated.exists() else None
+
+
+def find_eval_results_json(eval_run_dir: Path) -> Path | None:
+    """Locate the JSON results file produced by eval.py for this run.
+
+    eval.py drops `eval_<EvaluatorName>_<isoformat-ts>.json` next to the
+    checkpoint it scored, NOT inside the eval run dir. We try, in order:
+    1. Scrape `eval.log` for `"Saved results to: <path>"` — most precise,
+       works for legacy runs that lack env.json. Tolerant of stale paths
+       that predate the runs/trains/ migration.
+    2. Read `env.json` for CHECKPOINT_PATH and pick the most recent
+       `eval_*.json` in that directory — fallback when the run crashed
+       before logging the save line.
+    3. Glob `runs/trains/**/checkpoints/eval_*.json` for the basename
+       extracted from the log — final safety net if the parent dir was
+       renamed entirely.
+    """
+    runs_root = eval_run_dir.parent.parent  # eval_run_dir = <runs>/evals/<run>
+    if runs_root.name != "runs":
+        # Best-effort: walk up until we find a dir named "runs"
+        for ancestor in eval_run_dir.parents:
+            if ancestor.name == "runs":
+                runs_root = ancestor
+                break
+
+    log_path = eval_run_dir / "eval.log"
+    log_basename: str | None = None
+    if log_path.exists():
+        try:
+            for line in log_path.read_text(errors="replace").splitlines():
+                marker = "Saved results to:"
+                if marker in line:
+                    raw = Path(line.split(marker, 1)[1].strip())
+                    log_basename = raw.name
+                    resolved = _resolve_legacy_run_path(raw, runs_root)
+                    if resolved is not None:
+                        return resolved
+        except OSError:
+            pass
+
+    env_path = eval_run_dir / "env.json"
+    if env_path.exists():
+        try:
+            env_data = json.loads(env_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            env_data = {}
+        ckpt_path = env_data.get("CHECKPOINT_PATH")
+        if ckpt_path:
+            ckpt_parent = _resolve_legacy_run_path(Path(ckpt_path).parent, runs_root)
+            if ckpt_parent is not None:
+                matches = sorted(ckpt_parent.glob("eval_*.json"), reverse=True)
+                if matches:
+                    return matches[0]
+
+    if log_basename:
+        for hit in (runs_root / "trains").rglob(log_basename):
+            return hit
+    return None
 
 
 def list_checkpoints(run_dir: Path) -> list[Path]:

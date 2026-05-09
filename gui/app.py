@@ -19,9 +19,11 @@ import yaml
 from run_manager import (  # noqa: I001
     RunHandle,
     find_event_files,
+    find_eval_results_json,
     launch_evaluation,
     launch_training,
     list_checkpoints,
+    list_eval_runs,
     list_existing_runs,
     make_run_dir,
     read_scalars,
@@ -106,11 +108,21 @@ def yaml_field(label: str, key_prefix: str, subdir: str, default_pattern: str = 
         format_func=lambda p: str(p.relative_to(REPO_ROOT)),
         key=f"{key_prefix}_yaml_select",
     )
+    # Streamlit ignores the `value=` arg of `st.text_area` once its key already
+    # exists in session_state, so switching the dropdown otherwise leaves the
+    # editor showing the previous file's contents — and the run silently uses
+    # those wrong contents. Push the new file into session_state ourselves
+    # whenever the picker changes so the editor reloads from disk.
+    text_key = f"{key_prefix}_yaml_text"
+    prev_path_key = f"{key_prefix}_yaml_prev_path"
+    selected_str = str(selected)
+    if st.session_state.get(prev_path_key) != selected_str:
+        st.session_state[prev_path_key] = selected_str
+        st.session_state[text_key] = load_yaml_text(selected)
     text = st.text_area(
         f"{label} — edit",
-        value=load_yaml_text(selected),
         height=180,
-        key=f"{key_prefix}_yaml_text",
+        key=text_key,
     )
     return selected, text
 
@@ -182,35 +194,26 @@ def render_configure_tab() -> None:
 
     st.subheader("Periodic eval (optional, written into trainer YAML)")
     use_periodic_eval = st.checkbox("Enable periodic eval", value=False, key="use_pe")
-    pe_eval_dataset = pe_eval_dataset_path = None
-    pe_eval_tx = pe_eval_tx_path = None
-    pe_evaluator = pe_evaluator_path = None
+    pe_eval_dataset = pe_eval_dataset_path = pe_ds_text = None
+    pe_eval_tx = pe_eval_tx_path = pe_tx_text = None
+    pe_evaluator = pe_evaluator_path = pe_eval_text = None
     pe_every_n = 5
     if use_periodic_eval:
         c1, c2, c3 = st.columns(3)
         with c1:
             pe_eval_dataset = st.selectbox("Eval dataset", EVAL_DATASETS.names(), key="pe_ds")
-            pe_eval_dataset_path = st.selectbox(
-                "Eval dataset config",
-                list_yaml_files("dataset/eval"),
-                format_func=lambda p: str(p.relative_to(REPO_ROOT)),
-                key="pe_ds_path",
+            pe_eval_dataset_path, pe_ds_text = yaml_field(
+                "Eval dataset", "pe_ds_yaml", "dataset/eval"
             )
         with c2:
             pe_eval_tx = st.selectbox("Eval transformation", sorted(TRANSFORMATIONS.names()), key="pe_tx")
-            pe_eval_tx_path = st.selectbox(
-                "Eval transformation config",
-                list_yaml_files("transformation/eval"),
-                format_func=lambda p: str(p.relative_to(REPO_ROOT)),
-                key="pe_tx_path",
+            pe_eval_tx_path, pe_tx_text = yaml_field(
+                "Eval transformation", "pe_tx_yaml", "transformation/eval"
             )
         with c3:
             pe_evaluator = st.selectbox("Evaluator", EVALUATORS.names(), key="pe_eval")
-            pe_evaluator_path = st.selectbox(
-                "Evaluator config",
-                list_yaml_files("evaluator"),
-                format_func=lambda p: str(p.relative_to(REPO_ROOT)),
-                key="pe_eval_path",
+            pe_evaluator_path, pe_eval_text = yaml_field(
+                "Evaluator", "pe_eval_yaml", "evaluator"
             )
         pe_every_n = st.number_input("Run every N epochs", min_value=1, value=5, step=1)
 
@@ -223,7 +226,7 @@ def render_configure_tab() -> None:
     )
 
     if launch_btn:
-        run_dir = make_run_dir(RUNS_PARENT, name=run_name or None)
+        run_dir = make_run_dir(RUNS_PARENT / "trains", name=run_name or None)
 
         # Write YAMLs out (with overrides applied to trainer)
         cfg_dir = run_dir / "configs"
@@ -271,13 +274,16 @@ def render_configure_tab() -> None:
             assert pe_eval_dataset_path is not None
             assert pe_eval_tx_path is not None
             assert pe_evaluator_path is not None
-            # Snapshot the eval YAMLs into the run dir
+            assert pe_ds_text is not None
+            assert pe_tx_text is not None
+            assert pe_eval_text is not None
+            # Snapshot the (possibly inline-edited) eval YAMLs into the run dir.
             pe_ds_dst = cfg_dir / "eval_dataset.yaml"
             pe_tx_dst = cfg_dir / "eval_transformation.yaml"
             pe_eval_dst = cfg_dir / "evaluator.yaml"
-            write_yaml(pe_ds_dst, load_yaml_text(pe_eval_dataset_path))
-            write_yaml(pe_tx_dst, load_yaml_text(pe_eval_tx_path))
-            write_yaml(pe_eval_dst, load_yaml_text(pe_evaluator_path))
+            write_yaml(pe_ds_dst, pe_ds_text)
+            write_yaml(pe_tx_dst, pe_tx_text)
+            write_yaml(pe_eval_dst, pe_eval_text)
             trainer_yaml["periodic_eval"] = {
                 "enabled": True,
                 "every_n_epochs": int(pe_every_n),
@@ -320,12 +326,12 @@ def render_configure_tab() -> None:
 
 
 # =============================================================================
-# Tab 2 — Monitor
+# Tab 2 — Monitor Train
 # =============================================================================
 
 
 def render_monitor_tab() -> None:
-    st.header("Monitor")
+    st.header("Monitor Train")
 
     runs = list_existing_runs(RUNS_PARENT)
     if not runs:
@@ -421,7 +427,200 @@ def render_monitor_tab() -> None:
 
 
 # =============================================================================
-# Tab 3 — Evaluate
+# Tab 3 — Monitor Eval
+# =============================================================================
+
+
+def render_monitor_eval_tab() -> None:
+    st.header("Monitor Eval")
+
+    runs = list_eval_runs(RUNS_PARENT)
+    if not runs:
+        st.info("No eval runs yet. Launch one from the Evaluate tab.")
+        return
+
+    run_options = [str(r.relative_to(REPO_ROOT)) for r in runs]
+    # Pin the in-flight run at the top so the user lands on it after launching.
+    if st.session_state.eval_run:
+        run_options = ["(current)"] + run_options
+    selection = st.selectbox("Eval run", run_options, key="monitor_eval_run")
+    run_dir = (
+        st.session_state.eval_run.run_dir if selection == "(current)" else REPO_ROOT / selection
+    )
+
+    handle: RunHandle | None = (
+        st.session_state.eval_run
+        if st.session_state.eval_run and st.session_state.eval_run.run_dir == run_dir
+        else None
+    )
+
+    cols = st.columns([1, 1, 1, 1, 4])
+    with cols[0]:
+        st.session_state.auto_refresh = st.checkbox(
+            "Auto-refresh", value=st.session_state.auto_refresh, key="monitor_eval_auto"
+        )
+    with cols[1]:
+        refresh_interval = st.number_input(
+            "Interval (s)", min_value=2, max_value=60, value=5, key="monitor_eval_interval"
+        )
+    with cols[2]:
+        if st.button("Refresh now", key="monitor_eval_refresh"):
+            st.rerun()
+    with cols[3]:
+        if handle and handle.is_alive and st.button("Stop run", type="secondary", key="monitor_eval_stop"):
+            stop_run(handle)
+            st.rerun()
+
+    if handle:
+        if handle.is_alive and handle.process is not None:
+            st.success(f"Status: RUNNING — pid {handle.process.pid}")
+        else:
+            handle.cleanup()
+            rc = handle.returncode
+            if rc == 0:
+                st.info("Status: COMPLETED")
+            else:
+                st.error(f"Status: EXITED ({rc})")
+
+    # eval.py writes its results JSON next to the original checkpoint, not
+    # inside the eval run dir. find_eval_results_json reads env.json from the
+    # eval run dir to recover the checkpoint path and locate the file.
+    auto_run_every = (
+        int(refresh_interval) if (st.session_state.auto_refresh and handle and handle.is_alive) else None
+    )
+
+    @st.fragment(run_every=auto_run_every)
+    def _live_section() -> None:
+        results_json = find_eval_results_json(run_dir)
+        if results_json is not None and results_json.exists():
+            import json as jsonlib
+
+            with open(results_json) as f:
+                data = jsonlib.load(f)
+            results = data.get("results", data) if isinstance(data, dict) else data
+            if isinstance(results, dict) and results:
+                _render_eval_results(results)
+            else:
+                st.json(data)
+            st.caption(f"Source: {results_json.relative_to(REPO_ROOT)}")
+        else:
+            st.info("Results JSON not found yet — eval might still be running or have crashed.")
+
+        st.divider()
+        st.subheader("Log tail")
+        log_path = run_dir / "eval.log"
+        if not log_path.exists():
+            log_path = next(iter(run_dir.glob("*.log")), None)
+        st.code(tail_log(log_path, max_lines=200) or "(no log yet)", language="text")
+
+    _live_section()
+
+
+def _classify_eval_metric(name: str) -> str:
+    """Bucket an eval metric for display: section + value formatting."""
+    n = name.lower()
+    if any(t in n for t in ("rank_", "cmc")):
+        return "identification_rank"
+    if n == "map":
+        return "identification_map"
+    if "tar@far" in n:
+        return "tar"
+    if "threshold@far" in n:
+        return "tar_threshold"
+    if "threshold" in n:
+        return "threshold"
+    if "auc" in n:
+        return "auc"
+    if "eer" in n:
+        return "eer"
+    if "accuracy" in n:
+        return "accuracy"
+    return "other"
+
+
+def _format_eval_metric(name: str, value: float) -> str:
+    bucket = _classify_eval_metric(name)
+    # Treat anything in [0, 1] that conceptually represents a rate / accuracy
+    # as a percentage. AUC and raw threshold values stay as decimals.
+    if bucket in {"identification_rank", "identification_map", "tar", "eer", "accuracy"}:
+        return f"{value * 100:.2f}%"
+    if bucket in {"auc", "threshold", "tar_threshold"}:
+        return f"{value:.4f}"
+    return f"{value:.6f}"
+
+
+def _render_eval_results(results: dict) -> None:
+    """Pretty-print the eval JSON: headline cards + per-section tables.
+
+    Auto-detects whether we're looking at identification or verification
+    metrics (or both), so the same renderer works for either evaluator."""
+    import pandas as pd
+
+    scalars: dict[str, float] = {
+        k: float(v) for k, v in results.items() if isinstance(v, (int, float))
+    }
+    if not scalars:
+        st.json(results)
+        return
+
+    # ── Headline metrics row ────────────────────────────────────────────
+    st.subheader("Headline")
+    headline_keys = [
+        ("rank_1", "Rank-1"),
+        ("rank_5", "Rank-5"),
+        ("mAP", "mAP"),
+        ("lfw_accuracy_mean", "LFW accuracy"),
+        ("roc_auc", "ROC-AUC"),
+        ("eer", "EER"),
+        ("tar@far=1e-03", "TAR@FAR=1e-3"),
+    ]
+    available = [(key, label) for key, label in headline_keys if key in scalars]
+    if available:
+        cols = st.columns(len(available))
+        for col, (key, label) in zip(cols, available, strict=False):
+            value = scalars[key]
+            display = _format_eval_metric(key, value)
+            # Tack the std onto the LFW accuracy headline so the dispersion is
+            # visible without paging through the detailed table below.
+            if key == "lfw_accuracy_mean":
+                std = scalars.get("lfw_accuracy_std")
+                if std is not None:
+                    display = f"{value * 100:.2f}% ± {std * 100:.2f}%"
+            col.metric(label, display)
+
+    # ── Sectioned breakdown ────────────────────────────────────────────
+    section_titles: dict[str, str] = {
+        "identification_rank": "Identification — Rank / CMC",
+        "identification_map": "Identification — mAP",
+        "accuracy": "Verification — Accuracy",
+        "auc": "Verification — ROC-AUC",
+        "eer": "Verification — EER",
+        "tar": "TAR @ FAR target",
+        "tar_threshold": "Threshold @ FAR target",
+        "threshold": "Other thresholds",
+        "other": "Other",
+    }
+    grouped: dict[str, list[tuple[str, str, float]]] = {}
+    for k in sorted(scalars):
+        bucket = _classify_eval_metric(k)
+        grouped.setdefault(bucket, []).append((k, _format_eval_metric(k, scalars[k]), scalars[k]))
+
+    for bucket, title in section_titles.items():
+        rows = grouped.get(bucket)
+        if not rows:
+            continue
+        st.subheader(title)
+        df = pd.DataFrame(rows, columns=["metric", "value", "raw"]).set_index("metric")
+        st.dataframe(df, use_container_width=True)
+
+    non_scalar = {k: v for k, v in results.items() if not isinstance(v, (int, float))}
+    if non_scalar:
+        st.subheader("Other (non-scalar)")
+        st.json(non_scalar)
+
+
+# =============================================================================
+# Tab 4 — Evaluate
 # =============================================================================
 
 
@@ -471,8 +670,40 @@ def render_evaluate_tab() -> None:
         evaluator_name = st.selectbox("Evaluator", EVALUATORS.names(), key="evaluator_name")
         _, eval_text = yaml_field("Evaluator", "evaluator_yaml", "evaluator")
 
+    st.divider()
+    eval_run_name = st.text_input(
+        "Run name (optional)",
+        value="",
+        help="Appended to the timestamped eval run dir under runs/evals/.",
+        key="eval_run_name",
+    )
+
     if st.button("Run evaluation", type="primary"):
-        eval_run_dir = make_run_dir(RUNS_PARENT / "evals", name=selected_ckpt.stem)
+        # Refuse to launch if any YAML editor came back empty — happens when the
+        # text_area's session_state was never populated and would otherwise yield
+        # zero-byte YAMLs that crash eval.py downstream with confusing errors
+        # like 'BackboneConfig has no attribute input_size'.
+        empty = [
+            label
+            for label, content in (
+                ("backbone", bb_text),
+                ("eval_dataset", ds_text),
+                ("eval_transformation", tx_text),
+                ("evaluator", eval_text),
+            )
+            if not content.strip()
+        ]
+        if empty:
+            st.error(
+                "Empty YAML editor(s): "
+                + ", ".join(empty)
+                + ". Restart Streamlit (Ctrl+C and re-run the command) so the "
+                "editors reload from disk."
+            )
+            return
+
+        suffix = eval_run_name or selected_ckpt.stem
+        eval_run_dir = make_run_dir(RUNS_PARENT / "evals", name=suffix)
         cfg_dir = eval_run_dir / "configs"
         write_yaml(cfg_dir / "backbone.yaml", bb_text)
         write_yaml(cfg_dir / "eval_dataset.yaml", ds_text)
@@ -516,11 +747,13 @@ def render_evaluate_tab() -> None:
 # Layout
 # =============================================================================
 
-tabs = st.tabs(["Configure & Train", "Monitor", "Evaluate"])
+tabs = st.tabs(["Configure & Train", "Monitor Train", "Monitor Eval", "Evaluate"])
 
 with tabs[0]:
     render_configure_tab()
 with tabs[1]:
     render_monitor_tab()
 with tabs[2]:
+    render_monitor_eval_tab()
+with tabs[3]:
     render_evaluate_tab()

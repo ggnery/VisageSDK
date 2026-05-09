@@ -223,3 +223,100 @@ class TestGradientClipNullNormType:
         # Build_trainer + 1 epoch must not raise
         trainer = builder.build_trainer()
         trainer.train()
+
+
+# =============================================================================
+# ONNX export alongside .pth checkpoints
+# =============================================================================
+
+
+def _enable_onnx_export(cfg_dir: Path, **overrides) -> None:
+    """Patch the trainer YAML in-place to enable onnx_export."""
+    trainer_yaml_path = cfg_dir / "trainer.yaml"
+    data = yaml.safe_load(trainer_yaml_path.read_text())
+    data["onnx_export"] = {"enabled": True, **overrides}
+    trainer_yaml_path.write_text(yaml.safe_dump(data))
+
+
+class TestOnnxExport:
+    def test_disabled_by_default(self, tiny_train_setup):
+        """When the trainer YAML omits onnx_export, save_checkpoint writes
+        only the .pth — no .onnx artifact appears."""
+        from tools.trainer_builder import TrainerBuilder
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        trainer.save_checkpoint(0.0, 0.0, "ckpt.pth")
+
+        ckpt_dir = Path(tiny_train_setup["_ckpt_dir"])
+        assert (ckpt_dir / "ckpt.pth").exists()
+        assert not (ckpt_dir / "ckpt.onnx").exists()
+
+    def test_enabled_writes_valid_onnx(self, tiny_train_setup):
+        """onnx_export.enabled produces a graph that passes onnx.checker
+        with the expected named input/output."""
+        import onnx
+
+        from tools.trainer_builder import TrainerBuilder
+
+        _enable_onnx_export(Path(tiny_train_setup["_cfg_dir"]))
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        trainer.save_checkpoint(0.0, 0.0, "ckpt.pth")
+
+        onnx_path = Path(tiny_train_setup["_ckpt_dir"]) / "ckpt.onnx"
+        assert onnx_path.exists()
+
+        model = onnx.load(str(onnx_path))
+        onnx.checker.check_model(model)
+        assert [i.name for i in model.graph.input] == ["input"]
+        assert [o.name for o in model.graph.output] == ["embedding"]
+
+    def test_dynamic_batch_dim_is_symbolic(self, tiny_train_setup):
+        """dynamic_batch=true: dim 0 of input/output is a symbolic 'batch'
+        param, dims 1..3 are concrete (3, H, W from backbone.input_size)."""
+        import onnx
+
+        from tools.trainer_builder import TrainerBuilder
+
+        _enable_onnx_export(Path(tiny_train_setup["_cfg_dir"]), dynamic_batch=True)
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        trainer.save_checkpoint(0.0, 0.0, "ckpt.pth")
+
+        model = onnx.load(str(Path(tiny_train_setup["_ckpt_dir"]) / "ckpt.onnx"))
+        in_dims = model.graph.input[0].type.tensor_type.shape.dim
+        out_dims = model.graph.output[0].type.tensor_type.shape.dim
+
+        assert in_dims[0].dim_param == "batch"
+        assert (in_dims[1].dim_value, in_dims[2].dim_value, in_dims[3].dim_value) == (3, 160, 160)
+        assert out_dims[0].dim_param == "batch"
+        assert out_dims[1].dim_value == 16  # embedding_size from tiny_train_setup
+
+    def test_static_batch_dim_is_concrete(self, tiny_train_setup):
+        """dynamic_batch=false: batch dim is fixed (= dummy tensor batch=1)."""
+        import onnx
+
+        from tools.trainer_builder import TrainerBuilder
+
+        _enable_onnx_export(Path(tiny_train_setup["_cfg_dir"]), dynamic_batch=False)
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        trainer.save_checkpoint(0.0, 0.0, "ckpt.pth")
+
+        model = onnx.load(str(Path(tiny_train_setup["_ckpt_dir"]) / "ckpt.onnx"))
+        batch_dim = model.graph.input[0].type.tensor_type.shape.dim[0]
+        assert batch_dim.dim_value == 1
+        assert batch_dim.dim_param == ""  # no symbolic name
+
+    def test_backbone_input_size_propagated(self, tiny_train_setup):
+        """Regression: BaseBackbone must store input_size for the dummy
+        tensor in _maybe_export_onnx — without it the export crashes."""
+        from tools.trainer_builder import TrainerBuilder
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        assert trainer.backbone.input_size == [160, 160]

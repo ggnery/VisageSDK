@@ -1,0 +1,12 @@
+# IdentificationEvaluator layout for the FINAL eval — closed-set held-out
+# protocol: BOTH gallery and probe are unseen during training.
+# gallery -> val split, probe -> test split (same 179 identities).
+# Using train as gallery would inflate metrics because the backbone has
+# memorized train images (~98% train_acc); val gives an honest enrollment
+# distribution for each cow.
+# Built by:
+#   uv run python scripts/build_eval_layout.py \
+#       --src ./datasets/ceia_similarity_split \
+#       --dst ./datasets/ceia_similarity_eval \
+#       --gallery-split val --probe-split test
+eval_dir: "./datasets/ceia_similarity_eval"

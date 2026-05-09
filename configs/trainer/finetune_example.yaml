@@ -88,6 +88,13 @@ logging:
   tensorboard: true
   log_dir: null
 
+# Backbone-only ONNX dropped next to every .pth checkpoint. Loss head is
+# excluded by design — for re-id, downstream consumers want raw embeddings.
+onnx_export:
+  enabled: false        # opt-in
+  opset: 17
+  dynamic_batch: true
+
 # Run an evaluator inline every N epochs and log the metrics to TensorBoard.
 periodic_eval:
   enabled: true

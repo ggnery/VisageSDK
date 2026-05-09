@@ -102,6 +102,26 @@ class TestOptionalBlocks:
         cfg = TrainerConfig(str(trainer_yaml({"periodic_eval": block})))
         assert cfg.periodic_eval == block
 
+    def test_onnx_export_defaults(self, trainer_yaml):
+        cfg = TrainerConfig(str(trainer_yaml()))
+        # Opt-in: missing block must NOT enable export, and existing trainer
+        # YAMLs (without the block) must keep loading.
+        assert cfg.onnx_export_enabled is False
+        assert cfg.onnx_export_opset == 17
+        assert cfg.onnx_export_dynamic_batch is True
+
+    def test_onnx_export_explicit(self, trainer_yaml):
+        cfg = TrainerConfig(
+            str(
+                trainer_yaml(
+                    {"onnx_export": {"enabled": True, "opset": 14, "dynamic_batch": False}}
+                )
+            )
+        )
+        assert cfg.onnx_export_enabled is True
+        assert cfg.onnx_export_opset == 14
+        assert cfg.onnx_export_dynamic_batch is False
+
 
 class TestFreeze:
     def test_no_freeze_block(self, trainer_yaml):

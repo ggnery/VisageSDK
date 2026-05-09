@@ -47,6 +47,10 @@ class TrainerConfig(BaseConfig):
     tensorboard_enabled: bool
     tensorboard_log_dir: str | None
 
+    onnx_export_enabled: bool
+    onnx_export_opset: int
+    onnx_export_dynamic_batch: bool
+
     periodic_eval: dict[str, Any] | None
 
     def __init__(self, config_path: str) -> None:
@@ -111,5 +115,10 @@ class TrainerConfig(BaseConfig):
         logging_block = self._params.get("logging") or {}
         self.tensorboard_enabled = bool(logging_block.get("tensorboard", False))
         self.tensorboard_log_dir = logging_block.get("log_dir")
+
+        onnx_export = self._params.get("onnx_export") or {}
+        self.onnx_export_enabled = bool(onnx_export.get("enabled", False))
+        self.onnx_export_opset = int(onnx_export.get("opset", 17))
+        self.onnx_export_dynamic_batch = bool(onnx_export.get("dynamic_batch", True))
 
         self.periodic_eval = self._params.get("periodic_eval")

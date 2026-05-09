@@ -1,0 +1,10 @@
+# Verification eval (TAR@FAR / ROC-AUC / EER / LFW-style accuracy) for the
+# similarity dataset. Built from the held-out test split — both images in
+# every pair are unseen during training.
+# Built by:
+#   uv run python scripts/build_verification_pairs.py \
+#       --src ./datasets/ceia_similarity_split/test \
+#       --dst ./datasets/ceia_similarity_pairs \
+#       --n-folds 10 --n-pairs-per-fold 100
+eval_dir: "./datasets/ceia_similarity_pairs"
+pairs_path: "./datasets/ceia_similarity_pairs/pairs.txt"

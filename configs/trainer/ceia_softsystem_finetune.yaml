@@ -1,0 +1,75 @@
+# Fine-tune VGGFace2-pretrained InceptionResNetV1 on a cow dataset by
+# training ONLY the cross-entropy classification head. Works as-is for
+# both ceia_softsystem_annotated (50 classes) and ceia_similarity (179
+# classes); num_classes comes from the dataset YAML.
+#
+# - `freeze.patterns: ["*"]` freezes every backbone parameter (including
+#   `last_linear` / `last_bn`) — the freezer in trainer_builder.py is only
+#   applied to the backbone, so the cross_entropy loss's `linear` head is
+#   automatically the only thing that backprops.
+# - `checkpoint.load.path` points at the wrapped vggface2.pt produced by
+#   `scripts/wrap_facenet_pretrained.py`. `loss: False` reinitializes the
+#   classifier head (the source had 8631-class VGGFace2 logits).
+
+optimizer:
+  type: Adam
+  params:
+    lr: 1.0e-3
+    weight_decay: 1.0e-4
+
+lr_schedule:
+  type: StepLR
+  params:
+    step_size: 10
+    gamma: 0.5
+
+dataloader:
+  train:
+    batch_size: 32
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 32
+    shuffle: False
+    num_workers: 2
+
+num_epochs: 30
+device: cuda
+
+checkpoint:
+  save:
+    dir: ./checkpoints/ceia_softsystem_finetune
+    frequency: 5
+  load:
+    path: ./models/base/vggface2_wrapped.pth
+    backbone: True
+    loss: False
+    scheduler: False
+    optimizer: False
+
+freeze:
+  # Freeze every backbone parameter — only the cross_entropy head trains.
+  patterns:
+    - "*"
+
+seed: 42
+deterministic: false
+
+amp:
+  enabled: true
+  dtype: float16
+
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+logging:
+  tensorboard: true
+  log_dir: null
+
+# Drop a backbone-only ONNX next to every .pth (same basename, .onnx ext).
+# Loss head is excluded — for re-id deployments you want 512-d embeddings.
+onnx_export:
+  enabled: true
+  opset: 17
+  dynamic_batch: true

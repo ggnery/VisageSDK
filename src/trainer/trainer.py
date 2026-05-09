@@ -391,6 +391,52 @@ class Trainer:
         self.checkpoint_save_dir.mkdir(parents=True, exist_ok=True)
         torch.save(checkpoint, path)
         self.logger.info(f"Saved checkpoint: {path}")
+        self._maybe_export_onnx(path)
+
+    def _maybe_export_onnx(self, ckpt_path: Path) -> None:
+        """Export the backbone alongside the .pth checkpoint for portability.
+
+        Backbone-only by design: the loss head (`loss.linear`) is specific to
+        this run's class set and is rarely useful at inference for re-id
+        deployments — downstream consumers want 512-d embeddings to feed
+        cosine similarity / FAISS / etc. Switching the model to eval mode
+        captures the BN running stats; AMP autocast is bypassed so the
+        export graph is fp32.
+        """
+        if not self.config.onnx_export_enabled:
+            return
+        onnx_path = ckpt_path.with_suffix(".onnx")
+        h, w = self.backbone.input_size
+        dummy = torch.randn(1, 3, h, w, device=self.device)
+        dynamic_axes = (
+            {"input": {0: "batch"}, "embedding": {0: "batch"}}
+            if self.config.onnx_export_dynamic_batch
+            else None
+        )
+        was_training = self.backbone.training
+        self.backbone.eval()
+        try:
+            # `dynamo=False` keeps the legacy TorchScript-based exporter so we
+            # don't pull in `onnxscript` as a hard dependency. Switch to True
+            # (and add onnxscript to pyproject.toml) once the dynamo path is
+            # the project default.
+            torch.onnx.export(
+                self.backbone,
+                (dummy,),
+                str(onnx_path),
+                input_names=["input"],
+                output_names=["embedding"],
+                dynamic_axes=dynamic_axes,
+                opset_version=self.config.onnx_export_opset,
+                do_constant_folding=True,
+                dynamo=False,
+            )
+            self.logger.info(f"Exported ONNX:    {onnx_path}")
+        except Exception as e:
+            self.logger.warning(f"ONNX export failed for {onnx_path}: {e}")
+        finally:
+            if was_training:
+                self.backbone.train()
 
     def load_checkpoint(
         self,

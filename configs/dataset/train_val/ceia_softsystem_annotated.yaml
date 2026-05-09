@@ -1,0 +1,10 @@
+#=======================#=======================#=======================
+# These params are common to all train/val datasets and MUST be present
+#=======================#=======================#=======================
+train_dir: "./datasets/ceia_softsystem_annotated_split/train"
+val_dir: "./datasets/ceia_softsystem_annotated_split/val"
+
+# 55 cow folders in the source, 5 empty (CHAG616, EC388, EG7267,
+# GCID2529, REMCA6060) are dropped by scripts/split_dataset.py.
+num_classes: 50
+#=======================#=======================#=======================
