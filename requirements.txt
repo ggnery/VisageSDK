@@ -6,3 +6,5 @@ tqdm==4.67.1
 python-dotenv==1.1.1
 numpy>=1.26
 tensorboard>=2.16
+streamlit>=1.30
+pandas>=2.0
