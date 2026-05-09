@@ -8,14 +8,19 @@ from registry import Registry
 class TestRegistry:
     def test_register_and_get(self):
         r = Registry("widget")
+
         class Foo: ...
+
         r.register("foo", Foo)
         assert r.get("foo") is Foo
 
     def test_register_duplicate_raises(self):
         r = Registry("widget")
+
         class A: ...
+
         class B: ...
+
         r.register("x", A)
         with pytest.raises(ValueError, match="already registered"):
             r.register("x", B)
@@ -59,6 +64,5 @@ class TestGlobalRegistries:
         assert "verification" in b.EVALUATORS.names()
         assert "identification" in b.EVALUATORS.names()
         # Single TRANSFORMATIONS registry with prefixed names
-        for n in ("vgg_face2_train", "vgg_face2_val",
-                  "casia_webface_train", "casia_webface_val", "lfw_eval"):
+        for n in ("vgg_face2_train", "vgg_face2_val", "casia_webface_train", "casia_webface_val", "lfw_eval"):
             assert n in b.TRANSFORMATIONS.names()

@@ -1,18 +1,15 @@
-from typing import Dict, Type
-
-
 class Registry:
     def __init__(self, kind: str):
         self._kind = kind
-        self._items: Dict[str, Type] = {}
+        self._items: dict[str, type] = {}
 
-    def register(self, name: str, cls: Type) -> Type:
+    def register(self, name: str, cls: type) -> type:
         if name in self._items:
             raise ValueError(f"{self._kind} '{name}' already registered as {self._items[name].__name__}")
         self._items[name] = cls
         return cls
 
-    def get(self, name: str) -> Type:
+    def get(self, name: str) -> type:
         if name not in self._items:
             available = ", ".join(sorted(self._items)) or "<none>"
             raise KeyError(f"{self._kind} '{name}' not found. Available: {available}")

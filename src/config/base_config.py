@@ -1,4 +1,5 @@
-from typing import Any, Dict
+from typing import Any
+
 import yaml
 
 
@@ -9,10 +10,10 @@ class BaseConfig:
     (e.g. embedding_size, num_classes). YAML keys are accessed via
     attribute lookup with no boilerplate."""
 
-    _params: Dict[str, Any]
+    _params: dict[str, Any]
 
     def __init__(self, config_path: str) -> None:
-        with open(config_path, "r") as file:
+        with open(config_path) as file:
             self._params = yaml.safe_load(file) or {}
 
     def __getattr__(self, name: str) -> Any:

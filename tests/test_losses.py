@@ -25,12 +25,14 @@ def loss_config_factory(tmp_path):
             backbone_info={"embedding_size": embedding_size},
             dataset_info={"num_classes": num_classes},
         )
+
     return _make
 
 
 # =============================================================================
 # CrossEntropyLoss
 # =============================================================================
+
 
 class TestCrossEntropyLoss:
     def test_forward_returns_loss_and_stats(self, loss_config_factory):
@@ -58,6 +60,7 @@ class TestCrossEntropyLoss:
 # MarginCosineProductLoss
 # =============================================================================
 
+
 class TestMarginCosineProductLoss:
     def test_forward_runs(self, loss_config_factory):
         cfg = loss_config_factory({"device": "cpu", "s": 30.0, "m": 0.4})
@@ -74,6 +77,7 @@ class TestMarginCosineProductLoss:
 # =============================================================================
 # CenterLoss
 # =============================================================================
+
 
 class TestCenterLoss:
     def test_forward_returns_components(self, loss_config_factory):
@@ -96,6 +100,7 @@ class TestCenterLoss:
 # TripletLoss
 # =============================================================================
 
+
 class TestTripletLoss:
     def test_forward_with_valid_triplets(self, loss_config_factory):
         cfg = loss_config_factory({"device": "cpu", "margin": 0.2})
@@ -104,8 +109,9 @@ class TestTripletLoss:
         torch.manual_seed(0)
         n_id, samples_per_id = 4, 2
         centroids = torch.randn(n_id, 8)
-        emb = (centroids.repeat_interleave(samples_per_id, dim=0)
-               + 0.05 * torch.randn(n_id * samples_per_id, 8))
+        emb = centroids.repeat_interleave(samples_per_id, dim=0) + 0.05 * torch.randn(
+            n_id * samples_per_id, 8
+        )
         labels = torch.arange(n_id).repeat_interleave(samples_per_id)
         value, stats = loss(emb, labels)
         assert torch.isfinite(value)

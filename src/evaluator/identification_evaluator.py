@@ -1,5 +1,3 @@
-from typing import Dict, List
-
 import torch
 
 from dataset.eval.identification_dataset import IdentificationDataset
@@ -15,7 +13,7 @@ from tools.metrics import (
 class IdentificationEvaluator(BaseEvaluator):
     """Gallery/probe metrics: rank-N accuracy, mAP, CMC@K."""
 
-    def evaluate(self) -> Dict[str, float]:
+    def evaluate(self) -> dict[str, float]:
         if not isinstance(self.dataset, IdentificationDataset):
             raise TypeError(
                 f"IdentificationEvaluator requires IdentificationDataset, got {type(self.dataset).__name__}"
@@ -31,7 +29,7 @@ class IdentificationEvaluator(BaseEvaluator):
         if not gallery_idx or not probe_idx:
             raise ValueError("Identification dataset must contain both gallery and probe images")
 
-        label_to_id: Dict[str, int] = {}
+        label_to_id: dict[str, int] = {}
         for label in labels:
             if label not in label_to_id:
                 label_to_id[label] = len(label_to_id)
@@ -44,9 +42,9 @@ class IdentificationEvaluator(BaseEvaluator):
 
         similarity = cosine_similarity_matrix(probe_emb, gallery_emb)
 
-        results: Dict[str, float] = {}
+        results: dict[str, float] = {}
 
-        ranks: List[int] = list(getattr(self.config, "ranks", [1, 5, 10]))
+        ranks: list[int] = list(getattr(self.config, "ranks", [1, 5, 10]))
         for n in ranks:
             results[f"rank_{n}"] = rank_n_accuracy(similarity, probe_labels, gallery_labels, n=n)
 

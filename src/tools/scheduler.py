@@ -1,5 +1,3 @@
-from typing import Dict
-
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import (
     LambdaLR,
@@ -29,7 +27,7 @@ def build_scheduler(optimizer: Optimizer, config: TrainerConfig) -> LRScheduler:
             raise ValueError(f"Scheduler {scheduler_type} not implemented")
 
 
-def build_stair_lr(optimizer: Optimizer, scheduler_params: Dict[int, float]) -> LambdaLR:
+def build_stair_lr(optimizer: Optimizer, scheduler_params: dict[int, float]) -> LambdaLR:
     """Stair LR: at each milestone epoch, set the LR to the configured value.
 
     The YAML maps `epoch -> absolute_lr`. Each parameter group is given its
@@ -49,23 +47,24 @@ def build_stair_lr(optimizer: Optimizer, scheduler_params: Dict[int, float]) -> 
                 else:
                     break
             return (target / base_lr) if base_lr else 1.0
+
         return lr_lambda
 
     lambdas = [make_lambda(g["lr"]) for g in optimizer.param_groups]
     return LambdaLR(optimizer, lambdas)
 
 
-def build_multi_step_lr(optimizer: Optimizer, scheduler_params: Dict) -> MultiStepLR:
+def build_multi_step_lr(optimizer: Optimizer, scheduler_params: dict) -> MultiStepLR:
     milestones = scheduler_params.get("milestones", [])
     gamma = scheduler_params.get("gamma", 0.1)
     return MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
 
 
-def build_step_lr(optimizer: Optimizer, scheduler_params: Dict) -> StepLR:
+def build_step_lr(optimizer: Optimizer, scheduler_params: dict) -> StepLR:
     return StepLR(optimizer, scheduler_params["step_size"], scheduler_params["gamma"])
 
 
-def build_reduce_lr_on_plateau(optimizer: Optimizer, scheduler_params: Dict) -> ReduceLROnPlateau:
+def build_reduce_lr_on_plateau(optimizer: Optimizer, scheduler_params: dict) -> ReduceLROnPlateau:
     return ReduceLROnPlateau(
         optimizer,
         scheduler_params["mode"],

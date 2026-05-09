@@ -11,6 +11,7 @@ class EvaluatorConfig(BaseConfig):
         far_targets: list of FAR points for TAR@FAR (verification)
         ranks: list of N values for rank-N accuracy (identification)
     """
+
     device: str
     batch_size: int
 

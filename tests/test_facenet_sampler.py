@@ -1,7 +1,5 @@
 """Tests for FacenetBatchSampler batch construction."""
 
-from pathlib import Path
-
 import pytest
 import yaml
 from torchvision import transforms
@@ -19,11 +17,15 @@ class _Tx:
 @pytest.fixture
 def small_train_dataset(tmp_imagefolder, tmp_path):
     cfg_path = tmp_path / "ds.yaml"
-    cfg_path.write_text(yaml.safe_dump({
-        "train_dir": str(tmp_imagefolder / "train"),
-        "val_dir": str(tmp_imagefolder / "val"),
-        "num_classes": 3,
-    }))
+    cfg_path.write_text(
+        yaml.safe_dump(
+            {
+                "train_dir": str(tmp_imagefolder / "train"),
+                "val_dir": str(tmp_imagefolder / "val"),
+                "num_classes": 3,
+            }
+        )
+    )
     cfg = TrainValDatasetConfig(str(cfg_path), backbone_info={"input_size": [32, 32]})
     return ImageFolderDataset(cfg, _Tx(), split="train")
 
@@ -35,11 +37,16 @@ def make_sampler(tmp_path):
     def _make(faces_per_identity, num_identities_per_batch):
         counter["i"] += 1
         path = tmp_path / f"sampler_{counter['i']}.yaml"
-        path.write_text(yaml.safe_dump({
-            "faces_per_identity": faces_per_identity,
-            "num_identities_per_batch": num_identities_per_batch,
-        }))
+        path.write_text(
+            yaml.safe_dump(
+                {
+                    "faces_per_identity": faces_per_identity,
+                    "num_identities_per_batch": num_identities_per_batch,
+                }
+            )
+        )
         return BatchSamplerConfig(str(path))
+
     return _make
 
 

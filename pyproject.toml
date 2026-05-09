@@ -23,6 +23,8 @@ dependencies = [
 dev = [
     "pytest>=7",
     "pytest-cov>=4",
+    "ruff>=0.6",
+    "pyright>=1.1",
 ]
 
 [tool.uv]
@@ -38,3 +40,56 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
 ]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["notebooks", "runs", ".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",   # line-too-long: handled by formatter
+    "B008",   # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+# These scripts insert src/ into sys.path before importing project code.
+"train.py" = ["E402"]
+"eval.py" = ["E402"]
+"gui/app.py" = ["E402"]
+"gui/run_manager.py" = []
+"tests/conftest.py" = ["E402"]
+# Tests can use ambiguous variable names freely
+"tests/**" = ["E741"]
+# Original-paper variable names (k, l, m, n) match the architecture diagrams.
+"src/backbone/inception_resnet_v2.py" = ["E741"]
+"src/backbone/inception_v4.py" = ["E741"]
+
+[tool.pyright]
+include = ["src", "gui", "tests", "train.py", "eval.py"]
+exclude = ["**/__pycache__", "**/.venv", "runs", "notebooks"]
+extraPaths = ["src"]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "basic"
+# These are noisy and not actionable in this code style — the framework
+# leans heavily on YAML-driven attribute access via BaseConfig.__getattr__.
+reportMissingImports = "none"
+reportMissingModuleSource = "none"
+reportUnusedImport = "warning"
+reportUnusedVariable = "none"
+reportAttributeAccessIssue = "none"
+reportArgumentType = "warning"
+reportGeneralTypeIssues = "warning"
+# torch re-exports many names through __init__.py without listing them in __all__;
+# pyright flags torch.cat, torch.device, etc. as "private". They aren't.
+reportPrivateImportUsage = "none"

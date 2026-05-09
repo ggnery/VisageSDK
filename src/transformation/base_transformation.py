@@ -1,5 +1,4 @@
 from abc import ABC
-from typing import List
 
 from torchvision import transforms
 
@@ -15,7 +14,7 @@ class BaseTransformation(ABC):
             + self.build_transformation(transformation_config)
         )
 
-    def build_transformation(self, transformation_config: TransformationConfig) -> List:
+    def build_transformation(self, transformation_config: TransformationConfig) -> list:
         """Override to build a custom transformation pipeline.
 
         Args:

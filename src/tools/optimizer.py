@@ -1,12 +1,11 @@
 from fnmatch import fnmatch
-from typing import Any, Dict, List
+from typing import Any
 
-from torch.optim import Optimizer, RMSprop, Adam, SGD, AdamW
+from torch.optim import SGD, Adam, AdamW, Optimizer, RMSprop
 
 from backbone.base_backbone import BaseBackbone
 from config.trainer.trainer_config import TrainerConfig
 from loss.base_loss import BaseLoss
-
 
 _OPTIMIZER_CLASSES = {
     "RMSprop": RMSprop,
@@ -24,8 +23,8 @@ def _named_with_prefix(module, prefix: str):
 def _build_param_groups(
     model: BaseBackbone,
     loss: BaseLoss,
-    group_specs: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    group_specs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Assign each (named) parameter to the first matching group spec.
 
     Each spec is a dict with a `pattern` (fnmatch on prefixed name) plus any
@@ -33,7 +32,7 @@ def _build_param_groups(
     pattern fall into a default group with no overrides (the optimizer's
     base lr/weight_decay applies).
     """
-    groups: List[Dict[str, Any]] = []
+    groups: list[dict[str, Any]] = []
     for spec in group_specs:
         if "pattern" not in spec:
             raise ValueError("Each param_group spec must include a `pattern`")
@@ -42,7 +41,7 @@ def _build_param_groups(
         g["_pattern"] = spec["pattern"]
         groups.append(g)
 
-    default_group: Dict[str, Any] = {"params": []}
+    default_group: dict[str, Any] = {"params": []}
 
     def assign(name: str, p):
         for g in groups:

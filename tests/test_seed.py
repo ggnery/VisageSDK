@@ -1,6 +1,7 @@
 """Tests for tools.seed."""
 
 import random
+
 import numpy as np
 import torch
 
@@ -9,10 +10,10 @@ from tools.seed import make_dataloader_generator, seed_worker, set_seed
 
 class TestSetSeed:
     def test_none_is_noop(self):
-        before = torch.rand(1).item()
+        # set_seed(None) must not touch any RNG; just verify it doesn't raise
+        # and that subsequent torch.rand() still works.
         set_seed(None)
         after = torch.rand(1).item()
-        # No assertion on equality — RNG advanced normally; we just verify no crash
         assert isinstance(after, float)
 
     def test_same_seed_produces_same_torch_random(self):

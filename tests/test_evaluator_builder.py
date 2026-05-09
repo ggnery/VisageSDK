@@ -16,30 +16,40 @@ def _write_yaml(path: Path, data: dict) -> None:
 def eval_env_setup(tmp_lfw_pairs, tmp_path, populated_registries):
     """Train a tiny backbone, save a checkpoint, then return env vars
     pointing eval.py at it."""
-    from registry import BACKBONES
     from config.backbone.base_backbone_config import BackboneConfig
+    from registry import BACKBONES
 
     images_dir, pairs_path = tmp_lfw_pairs
     cfg_dir = tmp_path / "configs"
 
-    _write_yaml(cfg_dir / "backbone.yaml", {
-        "input_size": [160, 160],
-        "embedding_size": 16,
-        "device": "cpu",
-        "dropout_keep": 0.8,
-    })
-    _write_yaml(cfg_dir / "lfw.yaml", {
-        "eval_dir": str(images_dir),
-        "pairs_path": str(pairs_path),
-        "image_ext": "jpg",
-    })
-    _write_yaml(cfg_dir / "tx.yaml", {
-        "normalize": {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]}
-    })
-    _write_yaml(cfg_dir / "evaluator.yaml", {
-        "device": "cpu", "batch_size": 4, "num_workers": 0,
-        "distance": "cosine", "far_targets": [1.0e-1],
-    })
+    _write_yaml(
+        cfg_dir / "backbone.yaml",
+        {
+            "input_size": [160, 160],
+            "embedding_size": 16,
+            "device": "cpu",
+            "dropout_keep": 0.8,
+        },
+    )
+    _write_yaml(
+        cfg_dir / "lfw.yaml",
+        {
+            "eval_dir": str(images_dir),
+            "pairs_path": str(pairs_path),
+            "image_ext": "jpg",
+        },
+    )
+    _write_yaml(cfg_dir / "tx.yaml", {"normalize": {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]}})
+    _write_yaml(
+        cfg_dir / "evaluator.yaml",
+        {
+            "device": "cpu",
+            "batch_size": 4,
+            "num_workers": 0,
+            "distance": "cosine",
+            "far_targets": [1.0e-1],
+        },
+    )
 
     # Save a fresh-init backbone state_dict as a checkpoint
     backbone_cfg = BackboneConfig(str(cfg_dir / "backbone.yaml"))
@@ -62,6 +72,7 @@ def eval_env_setup(tmp_lfw_pairs, tmp_path, populated_registries):
 
 def _build_eval_env(env):
     from config.env_eval_config import ENVEvalConfig
+
     return ENVEvalConfig(
         backbone=env["BACKBONE"],
         backbone_config=env["BACKBONE_CONFIG"],
@@ -77,8 +88,8 @@ def _build_eval_env(env):
 
 class TestEvaluatorBuilder:
     def test_builder_constructs_evaluator(self, eval_env_setup):
-        from tools.evaluator_builder import EvaluatorBuilder
         from evaluator.verification_evaluator import VerificationEvaluator
+        from tools.evaluator_builder import EvaluatorBuilder
 
         builder = EvaluatorBuilder(_build_eval_env(eval_env_setup))
         evaluator = builder.build()
@@ -96,9 +107,9 @@ class TestEvaluatorBuilder:
     def test_loads_raw_state_dict(self, eval_env_setup, tmp_path):
         """If the checkpoint is a raw state_dict (no `backbone_state_dict`
         wrapper), the builder still loads it."""
-        from tools.evaluator_builder import EvaluatorBuilder
-        from registry import BACKBONES
         from config.backbone.base_backbone_config import BackboneConfig
+        from registry import BACKBONES
+        from tools.evaluator_builder import EvaluatorBuilder
 
         backbone_cfg = BackboneConfig(eval_env_setup["BACKBONE_CONFIG"])
         backbone = BACKBONES.get("inception_resnet_v1")(backbone_cfg)

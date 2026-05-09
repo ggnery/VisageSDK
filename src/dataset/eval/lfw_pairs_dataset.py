@@ -15,9 +15,7 @@ once even if it appears in multiple pairs) plus a list of pairs as
 """
 
 from pathlib import Path
-from typing import List, Tuple
-
-from typing_extensions import override
+from typing import override
 
 from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
 from dataset.eval.base_eval_dataset import BaseEvalDataset
@@ -29,7 +27,7 @@ def _img_path(root: Path, name: str, idx: int, ext: str) -> Path:
 
 
 class LFWPairsDataset(BaseEvalDataset):
-    pairs: List[Tuple[int, int, int, int]]  # (img_idx_a, img_idx_b, is_same, fold)
+    pairs: list[tuple[int, int, int, int]]  # (img_idx_a, img_idx_b, is_same, fold)
     n_folds: int
     n_pairs_per_fold: int
 
@@ -54,7 +52,7 @@ class LFWPairsDataset(BaseEvalDataset):
                 self.data.append((name, key))
             return path_to_idx[key]
 
-        with open(pairs_path, "r") as f:
+        with open(pairs_path) as f:
             header = f.readline().strip().split()
             self.n_folds = int(header[0])
             self.n_pairs_per_fold = int(header[1])
@@ -78,6 +76,6 @@ class LFWPairsDataset(BaseEvalDataset):
                     b = register(name_b, ib)
                     self.pairs.append((a, b, 0, fold))
 
-        for label, path in self.data:
+        for _, path in self.data:
             if not Path(path).exists():
                 raise FileNotFoundError(f"Image referenced by pairs.txt not found: {path}")

@@ -14,6 +14,7 @@ def config_file(tmp_path):
         p = tmp_path / "cfg.yaml"
         p.write_text(yaml.safe_dump(data))
         return p
+
     return _make
 
 

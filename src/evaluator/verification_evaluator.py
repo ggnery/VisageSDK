@@ -1,5 +1,3 @@
-from typing import Dict, List
-
 import numpy as np
 import torch
 
@@ -19,7 +17,7 @@ from tools.metrics import (
 class VerificationEvaluator(BaseEvaluator):
     """Pair-based metrics: LFW 10-fold accuracy, TAR@FAR, ROC-AUC, EER."""
 
-    def evaluate(self) -> Dict[str, float]:
+    def evaluate(self) -> dict[str, float]:
         if not isinstance(self.dataset, LFWPairsDataset):
             raise TypeError(
                 f"VerificationEvaluator requires LFWPairsDataset, got {type(self.dataset).__name__}"
@@ -43,7 +41,7 @@ class VerificationEvaluator(BaseEvaluator):
         else:
             raise ValueError(f"Unknown distance kind: {distance_kind}")
 
-        results: Dict[str, float] = {}
+        results: dict[str, float] = {}
 
         kfold = lfw_kfold_accuracy(distances, labels, folds, n_folds=self.dataset.n_folds)
         results["lfw_accuracy_mean"] = kfold["accuracy_mean"]
@@ -59,7 +57,7 @@ class VerificationEvaluator(BaseEvaluator):
         results["eer"] = eer_value
         results["eer_threshold"] = eer_thr
 
-        far_targets: List[float] = list(getattr(self.config, "far_targets", [1e-3, 1e-4, 1e-5]))
+        far_targets: list[float] = list(getattr(self.config, "far_targets", [1e-3, 1e-4, 1e-5]))
         for far in far_targets:
             tar, thr_far = tar_at_far(distances, labels, far)
             results[f"tar@far={far:.0e}"] = tar

@@ -14,12 +14,17 @@ def make_stopper(tmp_path):
     def _make(base_patience=3, delta=0.01, patience_increase_ratio=0.8):
         counter["i"] += 1
         path = tmp_path / f"es_{counter['i']}.yaml"
-        path.write_text(yaml.safe_dump({
-            "base_patience": base_patience,
-            "delta": delta,
-            "patience_increase_ratio": patience_increase_ratio,
-        }))
+        path.write_text(
+            yaml.safe_dump(
+                {
+                    "base_patience": base_patience,
+                    "delta": delta,
+                    "patience_increase_ratio": patience_increase_ratio,
+                }
+            )
+        )
         return AdaptativeEarlyStopper(EarlyStopperConfig(str(path)))
+
     return _make
 
 
@@ -34,13 +39,13 @@ class TestAdaptativeEarlyStopper:
         es.early_stop(1.0)
         # No improvement for 2 epochs → stop
         assert es.early_stop(1.0) is False  # wait_count=1
-        assert es.early_stop(1.0) is True   # wait_count=2 == patience
+        assert es.early_stop(1.0) is True  # wait_count=2 == patience
 
     def test_resets_on_improvement(self, make_stopper):
         es = make_stopper(base_patience=2, delta=0.01)
         es.early_stop(1.0)
-        es.early_stop(1.0)        # wait_count=1
-        es.early_stop(0.5)        # improvement → resets
+        es.early_stop(1.0)  # wait_count=1
+        es.early_stop(0.5)  # improvement → resets
         # Now we need 2 more no-improvement steps
         assert es.early_stop(0.5) is False
         # 2nd no-improvement still under patience due to dynamic_patience

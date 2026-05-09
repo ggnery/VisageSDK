@@ -9,7 +9,6 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List
 
 import streamlit as st
 import yaml
@@ -19,24 +18,13 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 # Side-effect imports populate registries.
 import backbone  # noqa: F401
-import dataset.train_val  # noqa: F401
-import dataset.eval  # noqa: F401
-import early_stopper  # noqa: F401
 import batch_sampler  # noqa: F401
+import dataset.eval  # noqa: F401
+import dataset.train_val  # noqa: F401
+import early_stopper  # noqa: F401
 import evaluator  # noqa: F401
 import loss  # noqa: F401
 import transformation  # noqa: F401
-from registry import (
-    BACKBONES,
-    DATASETS,
-    EARLY_STOPPERS,
-    EVAL_DATASETS,
-    EVALUATORS,
-    LOSSES,
-    SAMPLERS,
-    TRANSFORMATIONS,
-)
-
 from gui.run_manager import (
     RunHandle,
     find_event_files,
@@ -49,6 +37,16 @@ from gui.run_manager import (
     stop_run,
     tail_log,
     write_yaml,
+)
+from registry import (
+    BACKBONES,
+    DATASETS,
+    EARLY_STOPPERS,
+    EVAL_DATASETS,
+    EVALUATORS,
+    LOSSES,
+    SAMPLERS,
+    TRANSFORMATIONS,
 )
 
 RUNS_PARENT = REPO_ROOT / "runs"
@@ -69,7 +67,8 @@ if "auto_refresh" not in st.session_state:
 # Helpers
 # =============================================================================
 
-def list_yaml_files(subdir: str) -> List[Path]:
+
+def list_yaml_files(subdir: str) -> list[Path]:
     p = CONFIGS_DIR / subdir
     if not p.exists():
         return []
@@ -113,6 +112,7 @@ def yaml_field(label: str, key_prefix: str, subdir: str, default_pattern: str = 
 # =============================================================================
 # Tab 1 — Configure & Train
 # =============================================================================
+
 
 def render_configure_tab() -> None:
     st.header("Configure & Train")
@@ -212,9 +212,11 @@ def render_configure_tab() -> None:
 
     st.divider()
     run_name = st.text_input("Run name (optional)", value="", help="Appended to the timestamped run dir")
-    launch_btn = st.button("Launch Training", type="primary", disabled=bool(
-        st.session_state.training_run and st.session_state.training_run.is_alive
-    ))
+    launch_btn = st.button(
+        "Launch Training",
+        type="primary",
+        disabled=bool(st.session_state.training_run and st.session_state.training_run.is_alive),
+    )
 
     if launch_btn:
         run_dir = make_run_dir(RUNS_PARENT, name=run_name or None)
@@ -269,7 +271,7 @@ def render_configure_tab() -> None:
 
         write_yaml(cfg_dir / "trainer.yaml", trainer_yaml)
 
-        env: Dict[str, str] = {
+        env: dict[str, str] = {
             "BACKBONE": backbone_name,
             "BACKBONE_CONFIG": str(cfg_dir / "backbone.yaml"),
             "LOSS": loss_name,
@@ -299,6 +301,7 @@ def render_configure_tab() -> None:
 # Tab 2 — Monitor
 # =============================================================================
 
+
 def render_monitor_tab() -> None:
     st.header("Monitor")
 
@@ -311,10 +314,7 @@ def render_monitor_tab() -> None:
     if st.session_state.training_run:
         run_options = ["(current)"] + run_options
     selection = st.selectbox("Run", run_options, key="monitor_run")
-    if selection == "(current)":
-        run_dir = st.session_state.training_run.run_dir
-    else:
-        run_dir = REPO_ROOT / selection
+    run_dir = st.session_state.training_run.run_dir if selection == "(current)" else REPO_ROOT / selection
 
     handle: RunHandle | None = (
         st.session_state.training_run
@@ -331,13 +331,12 @@ def render_monitor_tab() -> None:
         if st.button("Refresh now"):
             st.rerun()
     with cols[3]:
-        if handle and handle.is_alive:
-            if st.button("Stop run", type="secondary"):
-                stop_run(handle)
-                st.rerun()
+        if handle and handle.is_alive and st.button("Stop run", type="secondary"):
+            stop_run(handle)
+            st.rerun()
 
     if handle:
-        if handle.is_alive:
+        if handle.is_alive and handle.process is not None:
             st.success(f"Status: RUNNING — pid {handle.process.pid}")
         else:
             rc = handle.returncode
@@ -359,7 +358,7 @@ def render_monitor_tab() -> None:
         val_stat_tags = sorted(t for t in scalars if t.startswith("val_stats/"))
         lr_tags = sorted(t for t in scalars if t == "lr")
 
-        def plot_group(title: str, tags: List[str]) -> None:
+        def plot_group(title: str, tags: list[str]) -> None:
             if not tags:
                 return
             st.subheader(title)
@@ -368,6 +367,7 @@ def render_monitor_tab() -> None:
             chart_data = {tag: [data[tag].get(s, None) for s in steps] for tag in tags}
             chart_data["epoch"] = steps
             import pandas as pd
+
             df = pd.DataFrame(chart_data).set_index("epoch")
             st.line_chart(df)
 
@@ -392,6 +392,7 @@ def render_monitor_tab() -> None:
 # =============================================================================
 # Tab 3 — Evaluate
 # =============================================================================
+
 
 def render_evaluate_tab() -> None:
     st.header("Evaluate")
@@ -474,6 +475,7 @@ def render_evaluate_tab() -> None:
         if eval_jsons and not st.session_state.eval_run.is_alive:
             st.subheader("Latest eval results")
             import json as jsonlib
+
             with open(eval_jsons[0]) as f:
                 data = jsonlib.load(f)
             st.json(data)

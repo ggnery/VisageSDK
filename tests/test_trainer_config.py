@@ -20,8 +20,7 @@ def _minimal_trainer_yaml() -> dict:
         "device": "cpu",
         "checkpoint": {
             "save": {"dir": "/tmp/x", "frequency": 1},
-            "load": {"path": None, "backbone": True, "loss": True,
-                     "scheduler": True, "optimizer": True},
+            "load": {"path": None, "backbone": True, "loss": True, "scheduler": True, "optimizer": True},
         },
     }
 
@@ -35,6 +34,7 @@ def trainer_yaml(tmp_path):
         p = tmp_path / "trainer.yaml"
         p.write_text(yaml.safe_dump(data))
         return p
+
     return _make
 
 
@@ -79,9 +79,7 @@ class TestOptionalBlocks:
 
     def test_gradient_clip_norm_type_null_falls_back_to_default(self, trainer_yaml):
         """B6 regression: explicit `norm_type: null` must not crash on float(None)."""
-        cfg = TrainerConfig(str(trainer_yaml({
-            "gradient_clip": {"max_norm": 1.0, "norm_type": None}
-        })))
+        cfg = TrainerConfig(str(trainer_yaml({"gradient_clip": {"max_norm": 1.0, "norm_type": None}})))
         assert cfg.grad_clip_max_norm == 1.0
         assert cfg.grad_clip_norm_type == 2.0  # defaulted, not crashed
 
@@ -91,9 +89,7 @@ class TestOptionalBlocks:
         assert cfg.tensorboard_log_dir is None
 
     def test_tensorboard_explicit(self, trainer_yaml):
-        cfg = TrainerConfig(str(trainer_yaml({
-            "logging": {"tensorboard": True, "log_dir": "/tmp/tb"}
-        })))
+        cfg = TrainerConfig(str(trainer_yaml({"logging": {"tensorboard": True, "log_dir": "/tmp/tb"}})))
         assert cfg.tensorboard_enabled is True
         assert cfg.tensorboard_log_dir == "/tmp/tb"
 
@@ -115,28 +111,22 @@ class TestFreeze:
         assert cfg.unfreeze_at_epoch == {}
 
     def test_freeze_patterns(self, trainer_yaml):
-        cfg = TrainerConfig(str(trainer_yaml({
-            "freeze": {"patterns": ["features.0.*"]}
-        })))
+        cfg = TrainerConfig(str(trainer_yaml({"freeze": {"patterns": ["features.0.*"]}})))
         assert cfg.freeze_patterns == ["features.0.*"]
         assert cfg.freeze_except is None
 
     def test_freeze_except(self, trainer_yaml):
-        cfg = TrainerConfig(str(trainer_yaml({
-            "freeze": {"except": ["last_linear*"]}
-        })))
+        cfg = TrainerConfig(str(trainer_yaml({"freeze": {"except": ["last_linear*"]}})))
         assert cfg.freeze_except == ["last_linear*"]
 
     def test_freeze_both_raises(self, trainer_yaml):
         with pytest.raises(ValueError, match="patterns.*except"):
-            TrainerConfig(str(trainer_yaml({
-                "freeze": {"patterns": ["a"], "except": ["b"]}
-            })))
+            TrainerConfig(str(trainer_yaml({"freeze": {"patterns": ["a"], "except": ["b"]}})))
 
     def test_unfreeze_schedule_keys_normalized_to_int(self, trainer_yaml):
-        cfg = TrainerConfig(str(trainer_yaml({
-            "freeze": {"unfreeze_at_epoch": {3: ["features.*"], 5: ["all*"]}}
-        })))
+        cfg = TrainerConfig(
+            str(trainer_yaml({"freeze": {"unfreeze_at_epoch": {3: ["features.*"], 5: ["all*"]}}}))
+        )
         assert cfg.unfreeze_at_epoch == {3: ["features.*"], 5: ["all*"]}
 
 
@@ -147,7 +137,7 @@ class TestOptimizerParamGroups:
 
     def test_param_groups_passed_through(self, trainer_yaml):
         groups = [{"pattern": "loss.*", "lr": 1e-3}]
-        cfg = TrainerConfig(str(trainer_yaml({
-            "optimizer": {"type": "SGD", "params": {"lr": 0.01}, "param_groups": groups}
-        })))
+        cfg = TrainerConfig(
+            str(trainer_yaml({"optimizer": {"type": "SGD", "params": {"lr": 0.01}, "param_groups": groups}}))
+        )
         assert cfg.optimizer_param_groups == groups

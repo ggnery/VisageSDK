@@ -1,5 +1,4 @@
 from collections import defaultdict
-from typing import Dict, List, Tuple
 
 import torchvision.transforms as transforms
 from PIL import Image
@@ -10,10 +9,10 @@ from transformation.base_transformation import BaseTransformation
 
 
 class BaseTrainValDataset(Dataset):
-    data: List[Tuple[str, str]]
+    data: list[tuple[str, str]]
     transform: transforms.Compose
-    label_to_idx: Dict[str, int]
-    label_map: Dict[int, List[int]]
+    label_to_idx: dict[str, int]
+    label_map: dict[int, list[int]]
 
     def __init__(self, dataset_config: TrainValDatasetConfig, transformation: BaseTransformation) -> None:
         super().__init__()
@@ -37,6 +36,6 @@ class BaseTrainValDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-    def read_data(self, dataset_config: TrainValDatasetConfig) -> List[Tuple[str, str]]:
+    def read_data(self, dataset_config: TrainValDatasetConfig) -> list[tuple[str, str]]:
         """Override to return list of (label, image_path) tuples."""
         raise NotImplementedError()

@@ -1,7 +1,5 @@
 """Tests for LFWPairsDataset."""
 
-from pathlib import Path
-
 import pytest
 import yaml
 from torchvision import transforms
@@ -18,11 +16,15 @@ class StubTransformation:
 def lfw_config(tmp_lfw_pairs, tmp_path):
     images_dir, pairs_path = tmp_lfw_pairs
     cfg_path = tmp_path / "lfw.yaml"
-    cfg_path.write_text(yaml.safe_dump({
-        "eval_dir": str(images_dir),
-        "pairs_path": str(pairs_path),
-        "image_ext": "jpg",
-    }))
+    cfg_path.write_text(
+        yaml.safe_dump(
+            {
+                "eval_dir": str(images_dir),
+                "pairs_path": str(pairs_path),
+                "image_ext": "jpg",
+            }
+        )
+    )
     return EvalDatasetConfig(str(cfg_path), backbone_info={"input_size": [32, 32]})
 
 
@@ -63,6 +65,7 @@ class TestLFWPairsDataset:
 
     def test_getitem_returns_index_and_tensor(self, lfw_config):
         import torch
+
         ds = LFWPairsDataset(lfw_config, StubTransformation())
         idx, image = ds[0]
         assert idx == 0
@@ -70,11 +73,15 @@ class TestLFWPairsDataset:
 
     def test_missing_pairs_file_raises(self, tmp_path):
         bad_path = tmp_path / "bad.yaml"
-        bad_path.write_text(yaml.safe_dump({
-            "eval_dir": str(tmp_path / "imgs"),
-            "pairs_path": str(tmp_path / "missing_pairs.txt"),
-            "image_ext": "jpg",
-        }))
+        bad_path.write_text(
+            yaml.safe_dump(
+                {
+                    "eval_dir": str(tmp_path / "imgs"),
+                    "pairs_path": str(tmp_path / "missing_pairs.txt"),
+                    "image_ext": "jpg",
+                }
+            )
+        )
         cfg = EvalDatasetConfig(str(bad_path), backbone_info={"input_size": [32, 32]})
         with pytest.raises(FileNotFoundError):
             LFWPairsDataset(cfg, StubTransformation())
@@ -86,11 +93,15 @@ class TestLFWPairsDataset:
         bad_pairs = tmp_path / "bad_pairs.txt"
         bad_pairs.write_text("1 1\nalice 1 99\nalice 1 carol 1\n")
         cfg_path = tmp_path / "cfg.yaml"
-        cfg_path.write_text(yaml.safe_dump({
-            "eval_dir": str(images_dir),
-            "pairs_path": str(bad_pairs),
-            "image_ext": "jpg",
-        }))
+        cfg_path.write_text(
+            yaml.safe_dump(
+                {
+                    "eval_dir": str(images_dir),
+                    "pairs_path": str(bad_pairs),
+                    "image_ext": "jpg",
+                }
+            )
+        )
         cfg = EvalDatasetConfig(str(cfg_path), backbone_info={"input_size": [32, 32]})
         with pytest.raises(FileNotFoundError):
             LFWPairsDataset(cfg, StubTransformation())

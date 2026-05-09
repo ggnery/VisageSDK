@@ -1,4 +1,3 @@
-from typing import Dict, Tuple
 import torch
 import torch.nn as nn
 
@@ -17,7 +16,7 @@ class BaseLoss(nn.Module):
         self.embedding_size = loss_config.embedding_size
         self.to(self.device)
 
-    def forward(self, embeddings: torch.Tensor, y_true: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
+    def forward(self, embeddings: torch.Tensor, y_true: torch.Tensor) -> tuple[torch.Tensor, dict]:
         """Override to compute the loss.
 
         Args:

@@ -1,11 +1,13 @@
 import os
 from dataclasses import dataclass
+
 from dotenv import load_dotenv
 
 
 @dataclass
 class ENVEvalConfig:
     """Environment variables driving a standalone evaluation run."""
+
     backbone: str
     backbone_config: str
     checkpoint_path: str

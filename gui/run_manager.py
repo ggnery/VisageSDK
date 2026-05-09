@@ -7,6 +7,7 @@ Trainer are read back via `event_accumulator` to drive live charts.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -14,7 +15,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import IO, Dict, List, Optional, Tuple
+from typing import IO
 
 import yaml
 
@@ -24,10 +25,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 @dataclass
 class RunHandle:
     run_dir: Path
-    process: Optional[subprocess.Popen] = None
-    log_path: Optional[Path] = None
-    log_file: Optional[IO] = None
-    env: Dict[str, str] = field(default_factory=dict)
+    process: subprocess.Popen | None = None
+    log_path: Path | None = None
+    log_file: IO | None = None
+    env: dict[str, str] = field(default_factory=dict)
 
     @property
     def is_alive(self) -> bool:
@@ -37,21 +38,19 @@ class RunHandle:
         # Close the log file once the subprocess has exited so we don't leak FDs
         # across long Streamlit sessions.
         if not alive and self.log_file is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self.log_file.close()
-            except Exception:
-                pass
             self.log_file = None
         return alive
 
     @property
-    def returncode(self) -> Optional[int]:
+    def returncode(self) -> int | None:
         if self.process is None:
             return None
         return self.process.poll()
 
 
-def make_run_dir(parent: Path, name: Optional[str] = None) -> Path:
+def make_run_dir(parent: Path, name: str | None = None) -> Path:
     timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     suffix = f"_{name}" if name else ""
     run_dir = parent / f"{timestamp}{suffix}"
@@ -67,9 +66,11 @@ def write_yaml(path: Path, content: str | dict) -> None:
         path.write_text(content)
 
 
-def _spawn(script: str, env: Dict[str, str], log_path: Path) -> Tuple[subprocess.Popen, IO]:
+def _spawn(script: str, env: dict[str, str], log_path: Path) -> tuple[subprocess.Popen, IO]:
     full_env = {**os.environ, **env}
-    log_file = open(log_path, "w", buffering=1)
+    # The log_file deliberately stays open for the lifetime of the subprocess
+    # — RunHandle.is_alive / stop_run close it once the process exits.
+    log_file = open(log_path, "w", buffering=1)  # noqa: SIM115
     process = subprocess.Popen(
         [sys.executable, script],
         cwd=str(REPO_ROOT),
@@ -82,7 +83,7 @@ def _spawn(script: str, env: Dict[str, str], log_path: Path) -> Tuple[subprocess
     return process, log_file
 
 
-def launch_training(env: Dict[str, str], run_dir: Path) -> RunHandle:
+def launch_training(env: dict[str, str], run_dir: Path) -> RunHandle:
     """Spawn `train.py` with the given env. Logs go to <run_dir>/train.log."""
     log_path = run_dir / "train.log"
     process, log_file = _spawn("train.py", env, log_path)
@@ -90,7 +91,7 @@ def launch_training(env: Dict[str, str], run_dir: Path) -> RunHandle:
     return RunHandle(run_dir=run_dir, process=process, log_path=log_path, log_file=log_file, env=env)
 
 
-def launch_evaluation(env: Dict[str, str], run_dir: Path) -> RunHandle:
+def launch_evaluation(env: dict[str, str], run_dir: Path) -> RunHandle:
     """Spawn `eval.py` with the given env. Logs go to <run_dir>/eval.log."""
     log_path = run_dir / "eval.log"
     process, log_file = _spawn("eval.py", env, log_path)
@@ -107,14 +108,12 @@ def stop_run(handle: RunHandle) -> None:
         except subprocess.TimeoutExpired:
             handle.process.kill()
     if handle.log_file is not None:
-        try:
+        with contextlib.suppress(Exception):
             handle.log_file.close()
-        except Exception:
-            pass
         handle.log_file = None
 
 
-def tail_log(log_path: Optional[Path], max_lines: int = 200) -> str:
+def tail_log(log_path: Path | None, max_lines: int = 200) -> str:
     if log_path is None or not log_path.exists():
         return ""
     try:
@@ -124,12 +123,12 @@ def tail_log(log_path: Optional[Path], max_lines: int = 200) -> str:
     return "\n".join(lines[-max_lines:])
 
 
-def find_event_files(run_dir: Path) -> List[Path]:
+def find_event_files(run_dir: Path) -> list[Path]:
     """Locate all TB event files under the run directory."""
     return sorted(run_dir.rglob("events.out.tfevents.*"))
 
 
-def read_scalars(event_files: List[Path]) -> Dict[str, List[Tuple[int, float]]]:
+def read_scalars(event_files: list[Path]) -> dict[str, list[tuple[int, float]]]:
     """Return {tag: [(step, value), ...]} aggregated across event files."""
     if not event_files:
         return {}
@@ -138,7 +137,7 @@ def read_scalars(event_files: List[Path]) -> Dict[str, List[Tuple[int, float]]]:
     except ImportError:
         return {}
 
-    aggregated: Dict[str, List[Tuple[int, float]]] = {}
+    aggregated: dict[str, list[tuple[int, float]]] = {}
     for ev in event_files:
         ea = EventAccumulator(str(ev), size_guidance={"scalars": 0})
         try:
@@ -149,16 +148,16 @@ def read_scalars(event_files: List[Path]) -> Dict[str, List[Tuple[int, float]]]:
             entries = aggregated.setdefault(tag, [])
             for event in ea.Scalars(tag):
                 entries.append((event.step, float(event.value)))
-    for tag, entries in aggregated.items():
+    for entries in aggregated.values():
         entries.sort(key=lambda x: x[0])
     return aggregated
 
 
-def list_existing_runs(parent: Path) -> List[Path]:
+def list_existing_runs(parent: Path) -> list[Path]:
     if not parent.exists():
         return []
     return sorted([p for p in parent.iterdir() if p.is_dir()], reverse=True)
 
 
-def list_checkpoints(run_dir: Path) -> List[Path]:
+def list_checkpoints(run_dir: Path) -> list[Path]:
     return sorted(run_dir.rglob("*.pth"))

@@ -1,5 +1,3 @@
-from typing import List, Tuple
-
 from PIL import Image
 from torch.utils.data import Dataset
 
@@ -15,7 +13,8 @@ class BaseEvalDataset(Dataset):
     image plus its index, which lets evaluators encode each unique image
     once and look up by index later.
     """
-    data: List[Tuple[str, str]]
+
+    data: list[tuple[str, str]]
 
     def __init__(self, config: EvalDatasetConfig, transformation: BaseTransformation) -> None:
         super().__init__()

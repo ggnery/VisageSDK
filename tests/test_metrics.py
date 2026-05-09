@@ -23,10 +23,10 @@ from tools.metrics import (
     verification_accuracy,
 )
 
-
 # =============================================================================
 # Distance / similarity helpers
 # =============================================================================
+
 
 class TestDistanceHelpers:
     def test_l2_normalize_unit_vectors(self):
@@ -70,6 +70,7 @@ class TestDistanceHelpers:
 # =============================================================================
 # Verification metrics
 # =============================================================================
+
 
 @pytest.fixture
 def separable_pairs():
@@ -150,6 +151,7 @@ class TestVerificationMetrics:
 # Identification metrics
 # =============================================================================
 
+
 @pytest.fixture
 def perfect_retrieval():
     """Each probe's nearest gallery is the same id by construction."""
@@ -158,10 +160,7 @@ def perfect_retrieval():
     centroids = torch.randn(n_id, 16)
     gallery_emb = centroids + 0.01 * torch.randn(n_id, 16)
     n_probe_per = 3
-    probe_emb = (
-        centroids.repeat_interleave(n_probe_per, dim=0)
-        + 0.01 * torch.randn(n_id * n_probe_per, 16)
-    )
+    probe_emb = centroids.repeat_interleave(n_probe_per, dim=0) + 0.01 * torch.randn(n_id * n_probe_per, 16)
     gallery_labels = torch.arange(n_id)
     probe_labels = torch.arange(n_id).repeat_interleave(n_probe_per)
     sim = cosine_similarity_matrix(probe_emb, gallery_emb)
@@ -204,12 +203,16 @@ class TestIdentificationMetrics:
 
     def test_cmc_curve_partial_match(self):
         """One probe matches at rank 0, one at rank 2; expected cumulative 0.5, 0.5, 1.0."""
-        sim = torch.tensor([
-            [1.0, 0.5, 0.2, 0.1],
-            [0.1, 0.2, 0.9, 0.3],
-        ])
+        sim = torch.tensor(
+            [
+                [1.0, 0.5, 0.2, 0.1],
+                [0.1, 0.2, 0.9, 0.3],
+            ]
+        )
         probe_labels = torch.tensor([0, 1])
-        gallery_labels = torch.tensor([0, 1, 1, 2])  # probe-1 hits gallery-1 (rank 0) since sim[1,2]=0.9 highest
+        gallery_labels = torch.tensor(
+            [0, 1, 1, 2]
+        )  # probe-1 hits gallery-1 (rank 0) since sim[1,2]=0.9 highest
         # Recompute manually:
         # probe 0: order = [0, 1, 2, 3], gallery_labels[order] = [0, 1, 1, 2]; first hit of label 0 is at index 0
         # probe 1: order = [2, 3, 1, 0], gallery_labels[order] = [1, 2, 1, 0]; first hit of label 1 is at index 0
@@ -220,6 +223,7 @@ class TestIdentificationMetrics:
 # =============================================================================
 # ROC curve sanity
 # =============================================================================
+
 
 class TestRocCurve:
     def test_roc_curve_shapes(self, separable_pairs):

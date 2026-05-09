@@ -6,8 +6,6 @@ guards for the higher-impact bug fixes (B1 replay, B6 norm_type:null,
 B8 zero-sample guard, etc.).
 """
 
-import json
-import os
 from pathlib import Path
 
 import pytest
@@ -29,46 +27,62 @@ def tiny_train_setup(tmp_imagefolder, tmp_path, populated_registries):
     cfg_dir = tmp_path / "configs"
     ckpt_dir = tmp_path / "ckpt"
 
-    _write_yaml(cfg_dir / "backbone.yaml", {
-        # InceptionResNetV1 has fixed layer sizes targeting 160×160 input;
-        # the transformation pipeline upsamples the small fixture images.
-        "input_size": [160, 160],
-        "embedding_size": 16,
-        "device": "cpu",
-        "dropout_keep": 0.8,
-    })
-    _write_yaml(cfg_dir / "loss.yaml", {
-        "device": "cpu",
-        "label_smoothing": 0.0,
-        "use_bias": True,
-    })
-    _write_yaml(cfg_dir / "dataset.yaml", {
-        "train_dir": str(tmp_imagefolder / "train"),
-        "val_dir": str(tmp_imagefolder / "val"),
-        "num_classes": 3,
-    })
-    _write_yaml(cfg_dir / "tx.yaml", {
-        "train": {"normalize": {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]},
-                  "random_horizontal_flip": 0.0},
-        "val": {"normalize": {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]}},
-    })
-    _write_yaml(cfg_dir / "trainer.yaml", {
-        "optimizer": {"type": "SGD", "params": {"lr": 0.01, "momentum": 0.9}},
-        "lr_schedule": {"type": "StepLR", "params": {"step_size": 1, "gamma": 0.95}},
-        "dataloader": {
-            "train": {"batch_size": 4, "shuffle": True, "num_workers": 0},
-            "val": {"batch_size": 4, "shuffle": False, "num_workers": 0},
+    _write_yaml(
+        cfg_dir / "backbone.yaml",
+        {
+            # InceptionResNetV1 has fixed layer sizes targeting 160×160 input;
+            # the transformation pipeline upsamples the small fixture images.
+            "input_size": [160, 160],
+            "embedding_size": 16,
+            "device": "cpu",
+            "dropout_keep": 0.8,
         },
-        "num_epochs": 1,
-        "device": "cpu",
-        "checkpoint": {
-            "save": {"dir": str(ckpt_dir), "frequency": 1},
-            "load": {"path": None, "backbone": True, "loss": True,
-                     "scheduler": True, "optimizer": True},
+    )
+    _write_yaml(
+        cfg_dir / "loss.yaml",
+        {
+            "device": "cpu",
+            "label_smoothing": 0.0,
+            "use_bias": True,
         },
-        "seed": 42,
-        "gradient_clip": {"max_norm": 1.0, "norm_type": None},  # B6 regression
-    })
+    )
+    _write_yaml(
+        cfg_dir / "dataset.yaml",
+        {
+            "train_dir": str(tmp_imagefolder / "train"),
+            "val_dir": str(tmp_imagefolder / "val"),
+            "num_classes": 3,
+        },
+    )
+    _write_yaml(
+        cfg_dir / "tx.yaml",
+        {
+            "train": {
+                "normalize": {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]},
+                "random_horizontal_flip": 0.0,
+            },
+            "val": {"normalize": {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]}},
+        },
+    )
+    _write_yaml(
+        cfg_dir / "trainer.yaml",
+        {
+            "optimizer": {"type": "SGD", "params": {"lr": 0.01, "momentum": 0.9}},
+            "lr_schedule": {"type": "StepLR", "params": {"step_size": 1, "gamma": 0.95}},
+            "dataloader": {
+                "train": {"batch_size": 4, "shuffle": True, "num_workers": 0},
+                "val": {"batch_size": 4, "shuffle": False, "num_workers": 0},
+            },
+            "num_epochs": 1,
+            "device": "cpu",
+            "checkpoint": {
+                "save": {"dir": str(ckpt_dir), "frequency": 1},
+                "load": {"path": None, "backbone": True, "loss": True, "scheduler": True, "optimizer": True},
+            },
+            "seed": 42,
+            "gradient_clip": {"max_norm": 1.0, "norm_type": None},  # B6 regression
+        },
+    )
 
     return {
         "BACKBONE": "inception_resnet_v1",
@@ -91,6 +105,7 @@ def _build_env(env_dict):
     is cleaner, but since ENVConfig.from_env reads via os.getenv we can also
     instantiate ENVConfig directly to avoid global state."""
     from config.env_config import ENVConfig
+
     return ENVConfig(
         backbone=env_dict["BACKBONE"],
         backbone_config=env_dict["BACKBONE_CONFIG"],
@@ -108,6 +123,7 @@ def _build_env(env_dict):
 # =============================================================================
 # End-to-end smoke
 # =============================================================================
+
 
 class TestTrainerSmoke:
     def test_one_epoch_run_completes(self, tiny_train_setup):
@@ -128,14 +144,15 @@ class TestTrainerSmoke:
 # B1 — Resume + replay unfreeze
 # =============================================================================
 
+
 class TestResumeReplay:
     def test_replay_unfreezes_on_resume(self, tiny_train_setup, tmp_path):
         """B1: after `load_checkpoint`, every unfreeze whose epoch <= ckpt epoch
         must be re-applied so the trainable set matches what was running
         when the checkpoint was saved.
         """
-        from tools.trainer_builder import TrainerBuilder
         from tools.freezer import freeze_summary
+        from tools.trainer_builder import TrainerBuilder
 
         # First: train 2 epochs with an unfreeze at epoch 2.
         cfg_dir = Path(tiny_train_setup["_cfg_dir"])
@@ -190,6 +207,7 @@ class TestResumeReplay:
 # =============================================================================
 # B6 — gradient_clip.norm_type: null does not crash
 # =============================================================================
+
 
 class TestGradientClipNullNormType:
     def test_run_with_norm_type_null(self, tiny_train_setup):

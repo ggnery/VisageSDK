@@ -42,7 +42,7 @@ class TestBuildOptimizer:
             build_optimizer(model, loss, cfg)
 
     def test_supported_types_instantiate(self):
-        from torch.optim import Adam, AdamW, RMSprop, SGD
+        from torch.optim import SGD, Adam, AdamW, RMSprop
 
         model, loss = StubBackbone(), StubLoss()
         for name, expected in [("SGD", SGD), ("Adam", Adam), ("AdamW", AdamW), ("RMSprop", RMSprop)]:

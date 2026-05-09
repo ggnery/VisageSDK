@@ -6,7 +6,6 @@ metric keys are returned and have sane ranges.
 """
 
 import math
-from pathlib import Path
 
 import pytest
 import yaml
@@ -37,15 +36,20 @@ def _eval_cfg(tmp_path, overrides=None) -> EvaluatorConfig:
 # Verification
 # =============================================================================
 
+
 @pytest.fixture
 def lfw_eval_dataset(tmp_lfw_pairs, tmp_path):
     images_dir, pairs_path = tmp_lfw_pairs
     cfg_path = tmp_path / "lfw.yaml"
-    cfg_path.write_text(yaml.safe_dump({
-        "eval_dir": str(images_dir),
-        "pairs_path": str(pairs_path),
-        "image_ext": "jpg",
-    }))
+    cfg_path.write_text(
+        yaml.safe_dump(
+            {
+                "eval_dir": str(images_dir),
+                "pairs_path": str(pairs_path),
+                "image_ext": "jpg",
+            }
+        )
+    )
     cfg = EvalDatasetConfig(str(cfg_path), backbone_info={"input_size": [32, 32]})
     return LFWPairsDataset(cfg, _Tx())
 
@@ -54,9 +58,16 @@ class TestVerificationEvaluator:
     def test_returns_expected_keys(self, lfw_eval_dataset, tiny_backbone, tmp_path):
         evaluator = VerificationEvaluator(_eval_cfg(tmp_path), lfw_eval_dataset, tiny_backbone)
         results = evaluator.evaluate()
-        for key in ("lfw_accuracy_mean", "lfw_accuracy_std", "lfw_threshold_mean",
-                    "best_threshold_global", "best_accuracy_global",
-                    "roc_auc", "eer", "eer_threshold"):
+        for key in (
+            "lfw_accuracy_mean",
+            "lfw_accuracy_std",
+            "lfw_threshold_mean",
+            "best_threshold_global",
+            "best_accuracy_global",
+            "roc_auc",
+            "eer",
+            "eer_threshold",
+        ):
             assert key in results, f"missing {key}"
 
     def test_far_targets_emitted(self, lfw_eval_dataset, tiny_backbone, tmp_path):
@@ -92,6 +103,7 @@ class TestVerificationEvaluator:
         for split in ("gallery", "probe"):
             (ident_dir / split / "alice").mkdir(parents=True)
             from PIL import Image
+
             Image.new("RGB", (32, 32)).save(ident_dir / split / "alice" / "x.jpg")
         cfg_path = tmp_path / "ds.yaml"
         cfg_path.write_text(yaml.safe_dump({"eval_dir": str(ident_dir)}))
@@ -105,6 +117,7 @@ class TestVerificationEvaluator:
 # =============================================================================
 # Identification
 # =============================================================================
+
 
 @pytest.fixture
 def ident_dataset(tmp_identification, tmp_path):

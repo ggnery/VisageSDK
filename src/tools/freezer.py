@@ -1,6 +1,6 @@
-from fnmatch import fnmatch
-from typing import Iterable, List, Optional, Tuple
 import logging
+from collections.abc import Iterable
+from fnmatch import fnmatch
 
 import torch.nn as nn
 
@@ -11,9 +11,9 @@ def _match_any(name: str, patterns: Iterable[str]) -> bool:
 
 def freeze_by_patterns(
     module: nn.Module,
-    patterns: Optional[List[str]] = None,
-    except_patterns: Optional[List[str]] = None,
-) -> List[str]:
+    patterns: list[str] | None = None,
+    except_patterns: list[str] | None = None,
+) -> list[str]:
     """Set requires_grad=False on parameters matching the policy.
 
     Exactly one of `patterns` / `except_patterns` should be provided.
@@ -28,7 +28,7 @@ def freeze_by_patterns(
     if (patterns is None) == (except_patterns is None):
         raise ValueError("Provide exactly one of `patterns` or `except_patterns`")
 
-    frozen: List[str] = []
+    frozen: list[str] = []
     for name, p in module.named_parameters():
         if patterns is not None:
             should_freeze = _match_any(name, patterns)
@@ -40,12 +40,12 @@ def freeze_by_patterns(
     return frozen
 
 
-def unfreeze_by_patterns(module: nn.Module, patterns: List[str]) -> List[str]:
+def unfreeze_by_patterns(module: nn.Module, patterns: list[str]) -> list[str]:
     """Set requires_grad=True on parameters matching any pattern.
 
     Returns the list of unfrozen parameter names.
     """
-    unfrozen: List[str] = []
+    unfrozen: list[str] = []
     for name, p in module.named_parameters():
         if _match_any(name, patterns) and not p.requires_grad:
             p.requires_grad = True
@@ -53,7 +53,7 @@ def unfreeze_by_patterns(module: nn.Module, patterns: List[str]) -> List[str]:
     return unfrozen
 
 
-def freeze_summary(module: nn.Module) -> Tuple[int, int]:
+def freeze_summary(module: nn.Module) -> tuple[int, int]:
     """Return (trainable_params, total_params) counts."""
     total = 0
     trainable = 0
@@ -65,10 +65,8 @@ def freeze_summary(module: nn.Module) -> Tuple[int, int]:
     return trainable, total
 
 
-def log_freeze_state(module: nn.Module, logger: Optional[logging.Logger] = None) -> None:
+def log_freeze_state(module: nn.Module, logger: logging.Logger | None = None) -> None:
     logger = logger or logging.getLogger(__name__)
     trainable, total = freeze_summary(module)
     pct = 100.0 * trainable / total if total else 0.0
-    logger.info(
-        f"{type(module).__name__}: {trainable:,}/{total:,} trainable params ({pct:.1f}%)"
-    )
+    logger.info(f"{type(module).__name__}: {trainable:,}/{total:,} trainable params ({pct:.1f}%)")

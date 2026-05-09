@@ -1,8 +1,8 @@
 from registry import EVALUATORS
 
 from .base_evaluator import BaseEvaluator
-from .verification_evaluator import VerificationEvaluator
 from .identification_evaluator import IdentificationEvaluator
+from .verification_evaluator import VerificationEvaluator
 
 EVALUATORS.register("verification", VerificationEvaluator)
 EVALUATORS.register("identification", IdentificationEvaluator)

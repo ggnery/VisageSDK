@@ -1,18 +1,19 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from config.base_config import BaseConfig
 
 
 class TrainerConfig(BaseConfig):
     optimizer_type: str
     optimizer_params: Any
-    optimizer_param_groups: Optional[List[Dict[str, Any]]]
+    optimizer_param_groups: list[dict[str, Any]] | None
 
     lr_schedule_type: str
     lr_schedule_params: Any
 
-    train_batch_size: Optional[int]
+    train_batch_size: int | None
     train_workers: int
-    train_shuffle: Optional[bool]
+    train_shuffle: bool | None
 
     val_batch_size: int
     val_workers: int
@@ -21,7 +22,7 @@ class TrainerConfig(BaseConfig):
     checkpoint_save_frequency: int
     checkpoint_save_dir: str
 
-    checkpoint_load_path: Optional[str]
+    checkpoint_load_path: str | None
     checkpoint_load_backbone: bool
     checkpoint_load_loss: bool
     checkpoint_load_scheduler: bool
@@ -30,23 +31,23 @@ class TrainerConfig(BaseConfig):
     num_epochs: int
     device: str
 
-    freeze_patterns: Optional[List[str]]
-    freeze_except: Optional[List[str]]
-    unfreeze_at_epoch: Dict[int, List[str]]
+    freeze_patterns: list[str] | None
+    freeze_except: list[str] | None
+    unfreeze_at_epoch: dict[int, list[str]]
 
-    seed: Optional[int]
+    seed: int | None
     deterministic: bool
 
     amp_enabled: bool
     amp_dtype: str
 
-    grad_clip_max_norm: Optional[float]
+    grad_clip_max_norm: float | None
     grad_clip_norm_type: float
 
     tensorboard_enabled: bool
-    tensorboard_log_dir: Optional[str]
+    tensorboard_log_dir: str | None
 
-    periodic_eval: Optional[Dict[str, Any]]
+    periodic_eval: dict[str, Any] | None
 
     def __init__(self, config_path: str) -> None:
         super().__init__(config_path)

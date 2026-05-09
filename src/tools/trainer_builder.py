@@ -1,6 +1,15 @@
 from datetime import datetime
 from pathlib import Path
 
+# Trigger registry population. Side-effect imports — keep them.
+import backbone  # noqa: F401
+import batch_sampler  # noqa: F401
+import dataset.eval  # noqa: F401
+import dataset.train_val  # noqa: F401
+import early_stopper  # noqa: F401
+import evaluator  # noqa: F401
+import loss  # noqa: F401
+import transformation  # noqa: F401
 from config.backbone.base_backbone_config import BackboneConfig
 from config.batch_sampler.base_batch_sampler_config import BatchSamplerConfig
 from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
@@ -27,16 +36,6 @@ from tools.scheduler import build_scheduler
 from tools.seed import set_seed
 from trainer.trainer import Trainer
 
-# Trigger registry population. Side-effect imports — keep them.
-import backbone  # noqa: F401
-import loss  # noqa: F401
-import dataset.train_val  # noqa: F401
-import dataset.eval  # noqa: F401
-import early_stopper  # noqa: F401
-import batch_sampler  # noqa: F401
-import transformation  # noqa: F401
-import evaluator  # noqa: F401
-
 
 class TrainerBuilder:
     def __init__(self, env_config: ENVConfig):
@@ -60,9 +59,7 @@ class TrainerBuilder:
         )
         self.config_str += self.transformation_config.get_config_string()
 
-        self.dataset_config = TrainValDatasetConfig(
-            self.env.train_val_dataset_config, backbone_info
-        )
+        self.dataset_config = TrainValDatasetConfig(self.env.train_val_dataset_config, backbone_info)
         self.config_str += self.dataset_config.get_config_string()
         dataset_info = {"num_classes": self.dataset_config.num_classes}
 

@@ -8,13 +8,12 @@ mode at the cost of some throughput.
 import logging
 import os
 import random
-from typing import Optional
 
 import numpy as np
 import torch
 
 
-def set_seed(seed: Optional[int], deterministic: bool = False) -> None:
+def set_seed(seed: int | None, deterministic: bool = False) -> None:
     if seed is None:
         return
     logger = logging.getLogger(__name__)
@@ -32,7 +31,7 @@ def set_seed(seed: Optional[int], deterministic: bool = False) -> None:
         torch.backends.cudnn.benchmark = False
 
 
-def make_dataloader_generator(seed: Optional[int]) -> Optional[torch.Generator]:
+def make_dataloader_generator(seed: int | None) -> torch.Generator | None:
     """Generator for shuffling DataLoaders reproducibly."""
     if seed is None:
         return None

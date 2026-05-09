@@ -8,16 +8,14 @@ unnormalized; distance/similarity helpers L2-normalize internally when
 the cosine metric is used.
 """
 
-from typing import Dict, List, Optional, Tuple
-
 import numpy as np
 import torch
 import torch.nn.functional as F
 
-
 # =============================================================================
 # Distance / similarity helpers
 # =============================================================================
+
 
 def l2_normalize(x: torch.Tensor) -> torch.Tensor:
     return F.normalize(x, p=2, dim=-1)
@@ -46,6 +44,7 @@ def cosine_similarity_matrix(query: torch.Tensor, gallery: torch.Tensor) -> torc
 # Verification metrics (pair-based)
 # =============================================================================
 
+
 def verification_accuracy(distances: np.ndarray, labels: np.ndarray, threshold: float) -> float:
     """Binary accuracy treating pairs with distance < threshold as 'same'.
 
@@ -61,8 +60,8 @@ def verification_accuracy(distances: np.ndarray, labels: np.ndarray, threshold: 
 def best_threshold(
     distances: np.ndarray,
     labels: np.ndarray,
-    thresholds: Optional[np.ndarray] = None,
-) -> Tuple[float, float]:
+    thresholds: np.ndarray | None = None,
+) -> tuple[float, float]:
     """Sweep thresholds and return the (threshold, accuracy) maximizing accuracy."""
     if thresholds is None:
         lo, hi = float(distances.min()), float(distances.max())
@@ -77,7 +76,9 @@ def best_threshold(
     return best_thr, best_acc
 
 
-def roc_curve(distances: np.ndarray, labels: np.ndarray, n_thresholds: int = 400) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def roc_curve(
+    distances: np.ndarray, labels: np.ndarray, n_thresholds: int = 400
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return (fpr, tpr, thresholds) for the ROC curve.
 
     The score being thresholded is *similarity* (-distance), so a higher
@@ -106,7 +107,7 @@ def roc_auc(distances: np.ndarray, labels: np.ndarray) -> float:
     return float(np.trapezoid(tpr[order], fpr[order]))
 
 
-def eer(distances: np.ndarray, labels: np.ndarray) -> Tuple[float, float]:
+def eer(distances: np.ndarray, labels: np.ndarray) -> tuple[float, float]:
     """Equal Error Rate. Returns (eer_value, threshold_at_eer)."""
     fpr, tpr, thresholds = roc_curve(distances, labels)
     fnr = 1.0 - tpr
@@ -115,7 +116,7 @@ def eer(distances: np.ndarray, labels: np.ndarray) -> Tuple[float, float]:
     return float((fpr[idx] + fnr[idx]) / 2.0), float(thresholds[idx])
 
 
-def tar_at_far(distances: np.ndarray, labels: np.ndarray, far_target: float) -> Tuple[float, float]:
+def tar_at_far(distances: np.ndarray, labels: np.ndarray, far_target: float) -> tuple[float, float]:
     """True Accept Rate at a target False Accept Rate.
 
     Returns (tar, threshold). Picks the highest threshold (strictest) whose
@@ -135,7 +136,7 @@ def lfw_kfold_accuracy(
     labels: np.ndarray,
     fold_indices: np.ndarray,
     n_folds: int = 10,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Standard LFW protocol: per fold pick best threshold on training folds,
     measure accuracy on held-out fold. Returns mean and std accuracy.
 
@@ -145,8 +146,8 @@ def lfw_kfold_accuracy(
         fold_indices: (N,) integer fold id per pair
         n_folds: total folds
     """
-    accuracies: List[float] = []
-    thresholds: List[float] = []
+    accuracies: list[float] = []
+    thresholds: list[float] = []
     for fold in range(n_folds):
         train_mask = fold_indices != fold
         test_mask = fold_indices == fold
@@ -174,11 +175,12 @@ def lfw_kfold_accuracy(
 # Identification metrics (gallery/probe retrieval)
 # =============================================================================
 
+
 def cmc_curve(
     similarity: torch.Tensor,
     probe_labels: torch.Tensor,
     gallery_labels: torch.Tensor,
-    max_rank: Optional[int] = None,
+    max_rank: int | None = None,
 ) -> np.ndarray:
     """Cumulative Match Characteristic.
 
@@ -195,6 +197,7 @@ def cmc_curve(
     n_gallery = gl.shape[0]
     if max_rank is None:
         max_rank = n_gallery
+    max_rank = int(max_rank)
 
     # For each probe, sort gallery indices by descending similarity.
     order = torch.argsort(sim, dim=1, descending=True).numpy()
@@ -243,7 +246,7 @@ def mean_average_precision(
     gl = gallery_labels.detach().cpu().numpy()
     order = torch.argsort(sim, dim=1, descending=True).numpy()
 
-    aps: List[float] = []
+    aps: list[float] = []
     for i, true_label in enumerate(pl):
         if not np.any(gl == true_label):
             continue

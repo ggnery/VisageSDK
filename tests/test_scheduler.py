@@ -19,10 +19,13 @@ def _two_group_optimizer():
     """Optimizer with two param groups at different base LRs."""
     p1 = nn.Parameter(torch.zeros(2))
     p2 = nn.Parameter(torch.zeros(2))
-    return SGD([
-        {"params": [p1], "lr": 0.1},
-        {"params": [p2], "lr": 1e-4},
-    ], lr=0.1)
+    return SGD(
+        [
+            {"params": [p1], "lr": 0.1},
+            {"params": [p2], "lr": 1e-4},
+        ],
+        lr=0.1,
+    )
 
 
 def _single_group_optimizer(lr=0.1):
@@ -83,8 +86,7 @@ class TestMultiStepLR:
 class TestReduceLROnPlateau:
     def test_reduce_lr_built(self):
         opt = _single_group_optimizer(lr=0.1)
-        cfg = StubConfig("ReduceLROnPlateau",
-                         {"mode": "min", "factor": 0.5, "patience": 2})
+        cfg = StubConfig("ReduceLROnPlateau", {"mode": "min", "factor": 0.5, "patience": 2})
         sched = build_scheduler(opt, cfg)
         assert isinstance(sched, ReduceLROnPlateau)
 

@@ -1,19 +1,17 @@
 from pathlib import Path
-from typing import List, Tuple
-from typing_extensions import override
+from typing import override
 
 from config.dataset.train_val.base_train_val_dataset_config import TrainValDatasetConfig
 from dataset.train_val.base_train_val_dataset import BaseTrainValDataset
-
 
 _VALID_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
 _SPLITS = ("train", "val")
 
 
-def _scan_dir(root: Path) -> List[Tuple[str, str]]:
+def _scan_dir(root: Path) -> list[tuple[str, str]]:
     if not root.exists():
         raise FileNotFoundError(f"Dataset directory not found: {root}")
-    pairs: List[Tuple[str, str]] = []
+    pairs: list[tuple[str, str]] = []
     # Sort both class dirs and image files so label IDs are reproducible across machines / filesystems.
     for class_dir in sorted(root.iterdir()):
         if not class_dir.is_dir():
@@ -38,6 +36,6 @@ class ImageFolderDataset(BaseTrainValDataset):
         super().__init__(dataset_config, transformation)
 
     @override
-    def read_data(self, dataset_config: TrainValDatasetConfig) -> List[Tuple[str, str]]:
+    def read_data(self, dataset_config: TrainValDatasetConfig) -> list[tuple[str, str]]:
         target = dataset_config.train_dir if self._split == "train" else dataset_config.val_dir
         return _scan_dir(Path(target))

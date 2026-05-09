@@ -1,5 +1,10 @@
 import torch
 
+# Side-effect imports populate the registry.
+import backbone  # noqa: F401
+import dataset.eval  # noqa: F401
+import evaluator  # noqa: F401
+import transformation  # noqa: F401
 from config.backbone.base_backbone_config import BackboneConfig
 from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
 from config.env_eval_config import ENVEvalConfig
@@ -11,12 +16,6 @@ from registry import (
     EVALUATORS,
     TRANSFORMATIONS,
 )
-
-# Side-effect imports populate the registry.
-import backbone  # noqa: F401
-import dataset.eval  # noqa: F401
-import evaluator  # noqa: F401
-import transformation  # noqa: F401
 
 
 class EvaluatorBuilder:
@@ -34,14 +33,10 @@ class EvaluatorBuilder:
             "embedding_size": self.backbone_config.embedding_size,
         }
 
-        self.transformation_config = TransformationConfig(
-            self.env.eval_transformation_config, backbone_info
-        )
+        self.transformation_config = TransformationConfig(self.env.eval_transformation_config, backbone_info)
         self.config_str += self.transformation_config.get_config_string()
 
-        self.dataset_config = EvalDatasetConfig(
-            self.env.eval_dataset_config, backbone_info
-        )
+        self.dataset_config = EvalDatasetConfig(self.env.eval_dataset_config, backbone_info)
         self.config_str += self.dataset_config.get_config_string()
 
         self.evaluator_config = EvaluatorConfig(self.env.evaluator_config)

@@ -1,7 +1,6 @@
 """Tests for tools.freezer."""
 
 import pytest
-import torch
 import torch.nn as nn
 
 from tools.freezer import (

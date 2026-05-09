@@ -9,20 +9,17 @@ The dataset stores all images flat with a `roles` array indicating
 """
 
 from pathlib import Path
-from typing import List
-
-from typing_extensions import override
+from typing import override
 
 from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
 from dataset.eval.base_eval_dataset import BaseEvalDataset
 from transformation.base_transformation import BaseTransformation
 
-
 _VALID_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
 
 
-def _scan(split_dir: Path) -> List[tuple]:
-    pairs: List[tuple] = []
+def _scan(split_dir: Path) -> list[tuple]:
+    pairs: list[tuple] = []
     for cls_dir in sorted(split_dir.iterdir()):
         if not cls_dir.is_dir():
             continue
@@ -35,7 +32,7 @@ def _scan(split_dir: Path) -> List[tuple]:
 class IdentificationDataset(BaseEvalDataset):
     """Stores gallery and probe images. `roles[i]` ∈ {"gallery", "probe"}."""
 
-    roles: List[str]
+    roles: list[str]
 
     @override
     def __init__(self, config: EvalDatasetConfig, transformation: BaseTransformation) -> None:

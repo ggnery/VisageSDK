@@ -16,14 +16,12 @@ SRC = REPO_ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from typing import Tuple  # noqa: E402
-
 import pytest  # noqa: E402
 import torch  # noqa: E402
 from PIL import Image  # noqa: E402
 
 
-def _make_image(path: Path, color: Tuple[int, int, int]) -> None:
+def _make_image(path: Path, color: tuple[int, int, int]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (32, 32), color=color).save(path)
 
@@ -43,7 +41,7 @@ def tmp_imagefolder(tmp_path) -> Path:
 
 
 @pytest.fixture
-def tmp_lfw_pairs(tmp_path) -> Tuple[Path, Path]:
+def tmp_lfw_pairs(tmp_path) -> tuple[Path, Path]:
     """Tiny LFW-format dataset: 3 names × 3 images, 2 folds × 2 same/2 diff."""
     images_dir = tmp_path / "lfw"
     names = ("alice", "bob", "carol")
@@ -77,8 +75,10 @@ def tmp_identification(tmp_path) -> Path:
     for cls in classes:
         _make_image(tmp_path / "gallery" / cls / "g.jpg", color=((hash(cls) * 11) % 256, 200, 50))
         for i in range(2):
-            _make_image(tmp_path / "probe" / cls / f"p{i}.jpg",
-                        color=((hash(cls) * 11) % 256, 200 - i * 10, 50 + i * 5))
+            _make_image(
+                tmp_path / "probe" / cls / f"p{i}.jpg",
+                color=((hash(cls) * 11) % 256, 200 - i * 10, 50 + i * 5),
+            )
     return tmp_path
 
 
@@ -89,10 +89,10 @@ def populated_registries():
     Returns a tuple of registry handles for convenient access.
     """
     import backbone  # noqa: F401
-    import dataset.train_val  # noqa: F401
-    import dataset.eval  # noqa: F401
-    import early_stopper  # noqa: F401
     import batch_sampler  # noqa: F401
+    import dataset.eval  # noqa: F401
+    import dataset.train_val  # noqa: F401
+    import early_stopper  # noqa: F401
     import evaluator  # noqa: F401
     import loss  # noqa: F401
     import transformation  # noqa: F401

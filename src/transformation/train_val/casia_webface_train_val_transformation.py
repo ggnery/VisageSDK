@@ -1,13 +1,14 @@
-from typing import List, override
+from typing import override
 
 from torchvision import transforms
+
 from config.transformation.base_transformation_config import TransformationConfig
 from transformation.base_transformation import BaseTransformation
 
 
 class CasiaWebFaceTrainTransformation(BaseTransformation):
     @override
-    def build_transformation(self, cfg: TransformationConfig) -> List:
+    def build_transformation(self, cfg: TransformationConfig) -> list:
         train = cfg.train
         return [
             transforms.RandomHorizontalFlip(p=train["random_horizontal_flip"]),
@@ -18,7 +19,7 @@ class CasiaWebFaceTrainTransformation(BaseTransformation):
 
 class CasiaWebFaceValTransformation(BaseTransformation):
     @override
-    def build_transformation(self, cfg: TransformationConfig) -> List:
+    def build_transformation(self, cfg: TransformationConfig) -> list:
         val = cfg.val
         return [
             transforms.ToTensor(),

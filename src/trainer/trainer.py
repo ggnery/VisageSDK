@@ -1,14 +1,13 @@
+import json
+import logging
 from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Tuple
 
 import torch
-import logging
-import json
-from torch.utils.data import DataLoader
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from backbone.base_backbone import BaseBackbone
@@ -21,8 +20,12 @@ from loss.base_loss import BaseLoss
 from tools.freezer import log_freeze_state, unfreeze_by_patterns
 from tools.seed import make_dataloader_generator, seed_worker
 
-
-_DTYPE_MAP = {"float16": torch.float16, "bfloat16": torch.bfloat16, "fp16": torch.float16, "bf16": torch.bfloat16}
+_DTYPE_MAP = {
+    "float16": torch.float16,
+    "bfloat16": torch.bfloat16,
+    "fp16": torch.float16,
+    "bf16": torch.bfloat16,
+}
 
 
 class Trainer:
@@ -44,16 +47,19 @@ class Trainer:
     checkpoint_save_dir: Path
     checkpoint_frequency: int
 
-    def __init__(self, config: TrainerConfig,
-                 train_dataset: BaseTrainValDataset,
-                 val_dataset: BaseTrainValDataset,
-                 backbone: BaseBackbone,
-                 loss: BaseLoss,
-                 optimizer: Optimizer,
-                 scheduler: LRScheduler,
-                 sampler: Optional[BaseBatchSampler] = None,
-                 early_stopper: Optional[BaseEarlyStopper] = None,
-                 periodic_evaluator: Optional[BaseEvaluator] = None):
+    def __init__(
+        self,
+        config: TrainerConfig,
+        train_dataset: BaseTrainValDataset,
+        val_dataset: BaseTrainValDataset,
+        backbone: BaseBackbone,
+        loss: BaseLoss,
+        optimizer: Optimizer,
+        scheduler: LRScheduler,
+        sampler: BaseBatchSampler | None = None,
+        early_stopper: BaseEarlyStopper | None = None,
+        periodic_evaluator: BaseEvaluator | None = None,
+    ):
 
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
@@ -117,7 +123,9 @@ class Trainer:
         if config.amp_enabled and self.device.type != "cuda":
             self.logger.info("AMP requested but device is not CUDA — disabling AMP.")
         self.amp_dtype = _DTYPE_MAP.get(config.amp_dtype.lower(), torch.float16)
-        self.scaler = torch.amp.GradScaler("cuda", enabled=self.amp_enabled and self.amp_dtype == torch.float16)
+        self.scaler = torch.amp.GradScaler(
+            "cuda", enabled=self.amp_enabled and self.amp_dtype == torch.float16
+        )
 
         self.grad_clip_max_norm = config.grad_clip_max_norm
         self.grad_clip_norm_type = config.grad_clip_norm_type
@@ -156,7 +164,9 @@ class Trainer:
         return SummaryWriter(log_dir=str(log_dir))
 
     def train(self):
-        for self.epoch in range(self.epoch, self.num_epochs + 1):
+        # Using self.epoch as the loop variable is intentional: it lets save_checkpoint
+        # / save_stats / early_stopper see the current epoch outside this method too.
+        for self.epoch in range(self.epoch, self.num_epochs + 1):  # noqa: B020
             self._apply_unfreeze_schedule(self.epoch)
             train_loss, train_stats = self.train_epoch()
             val_loss, val_stats = self.validate_epoch()
@@ -201,9 +211,7 @@ class Trainer:
             return
         unfrozen = unfreeze_by_patterns(self.backbone, patterns)
         if unfrozen:
-            self.logger.info(
-                f"Epoch {epoch}: unfroze {len(unfrozen)} params matching {patterns}"
-            )
+            self.logger.info(f"Epoch {epoch}: unfroze {len(unfrozen)} params matching {patterns}")
             log_freeze_state(self.backbone, self.logger)
 
     def _replay_unfreeze_up_to(self, last_completed_epoch: int) -> None:
@@ -249,10 +257,10 @@ class Trainer:
         else:
             self.optimizer.step()
 
-    def train_epoch(self) -> Tuple[float, Dict]:
+    def train_epoch(self) -> tuple[float, dict]:
         total_loss = 0.0
         total_samples = 0
-        running_stats: Dict[str, float] = {}
+        running_stats: dict[str, float] = {}
         n_batches = 0
 
         self.backbone.train()
@@ -294,10 +302,10 @@ class Trainer:
         epoch_stats = {k: v / n_batches for k, v in running_stats.items()}
         return avg_loss, epoch_stats
 
-    def validate_epoch(self) -> Tuple[float, Dict]:
+    def validate_epoch(self) -> tuple[float, dict]:
         total_loss = 0.0
         total_samples = 0
-        running_stats: Dict[str, float] = {}
+        running_stats: dict[str, float] = {}
         n_batches = 0
 
         self.backbone.eval()
@@ -331,7 +339,7 @@ class Trainer:
         epoch_stats = {k: v / n_batches for k, v in running_stats.items()}
         return avg_loss, epoch_stats
 
-    def _maybe_run_periodic_eval(self) -> Optional[Dict[str, float]]:
+    def _maybe_run_periodic_eval(self) -> dict[str, float] | None:
         if self.periodic_evaluator is None:
             return None
         every_n = (self.config.periodic_eval or {}).get("every_n_epochs", 1)
@@ -345,8 +353,9 @@ class Trainer:
                 self.writer.add_scalar(f"eval/{k}", float(v), self.epoch)
         return results
 
-    def _tb_log_epoch(self, train_loss: float, val_loss: float, lr: float,
-                      train_stats: Dict, val_stats: Dict) -> None:
+    def _tb_log_epoch(
+        self, train_loss: float, val_loss: float, lr: float, train_stats: dict, val_stats: dict
+    ) -> None:
         if self.writer is None:
             return
         self.writer.add_scalar("loss/train", train_loss, self.epoch)
@@ -376,11 +385,14 @@ class Trainer:
         torch.save(checkpoint, path)
         self.logger.info(f"Saved checkpoint: {path}")
 
-    def load_checkpoint(self, checkpoint_path: Path,
-                        load_backbone: bool,
-                        load_loss: bool,
-                        load_scheduler: bool,
-                        load_optimizer: bool):
+    def load_checkpoint(
+        self,
+        checkpoint_path: Path,
+        load_backbone: bool,
+        load_loss: bool,
+        load_scheduler: bool,
+        load_optimizer: bool,
+    ):
         checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
 
         if load_backbone:
@@ -396,20 +408,27 @@ class Trainer:
         self.epoch = checkpoint["epoch"] + 1
         self.best_val_loss = checkpoint["val_loss"]
 
-        self.logger.info(f"Checkpoint {checkpoint_path} for backbone {self.backbone.__class__.__name__} successfully loaded")
+        self.logger.info(
+            f"Checkpoint {checkpoint_path} for backbone {self.backbone.__class__.__name__} successfully loaded"
+        )
         self.logger.info(f"Resuming train in epoch {self.epoch}")
 
-    def save_stats(self, train_loss: float, val_loss: float,
-                   train_stats: Dict, val_stats: Dict,
-                   eval_results: Optional[Dict[str, float]] = None):
+    def save_stats(
+        self,
+        train_loss: float,
+        val_loss: float,
+        train_stats: dict,
+        val_stats: dict,
+        eval_results: dict[str, float] | None = None,
+    ):
         history_name = self._checkpoint_name("training_history").replace(".pth", ".json")
         history_path = self.checkpoint_save_dir / history_name
-        full_history: Dict = {}
+        full_history: dict = {}
         if history_path.exists():
-            with open(history_path, "r") as f:
+            with open(history_path) as f:
                 full_history = json.load(f)
 
-        entry: Dict = {
+        entry: dict = {
             "train_loss": train_loss,
             "val_loss": val_loss,
             "train_stats": train_stats,

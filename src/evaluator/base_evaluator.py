@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Dict
 
 import torch
 from torch.utils.data import DataLoader
@@ -38,6 +37,6 @@ class BaseEvaluator(ABC):
         return embeddings
 
     @abstractmethod
-    def evaluate(self) -> Dict[str, float]:
+    def evaluate(self) -> dict[str, float]:
         """Run evaluation. Returns a flat dict of metric_name -> value."""
         raise NotImplementedError

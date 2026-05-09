@@ -6,4 +6,5 @@ class BackboneConfig(BaseConfig):
 
     Required YAML keys: input_size, embedding_size, device.
     """
+
     pass
