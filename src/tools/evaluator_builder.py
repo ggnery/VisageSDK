@@ -8,8 +8,8 @@ from config.transformation.base_transformation_config import TransformationConfi
 from registry import (
     BACKBONES,
     EVAL_DATASETS,
-    EVAL_TRANSFORMATIONS,
     EVALUATORS,
+    TRANSFORMATIONS,
 )
 
 # Side-effect imports populate the registry.
@@ -60,7 +60,7 @@ class EvaluatorBuilder:
             # raw state dict
             self.backbone.load_state_dict(ckpt, strict=False)
 
-        tx_cls = EVAL_TRANSFORMATIONS.get(self.env.eval_transformation)
+        tx_cls = TRANSFORMATIONS.get(self.env.eval_transformation)
         self.transformation = tx_cls(self.transformation_config)
 
         ds_cls = EVAL_DATASETS.get(self.env.eval_dataset)

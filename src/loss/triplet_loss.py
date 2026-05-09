@@ -62,9 +62,8 @@ class TripletLoss(BaseLoss):
         losses = F.relu(pos_distances - neg_distances + self.margin)
         loss = torch.mean(losses)
         
-        # Update mining info
+        # Mining stats only — the loss value itself is already logged as loss/train.
         mining_info.update({
-            'triplet_loss': loss.item(),
             'avg_pos_distance': torch.mean(pos_distances).item(),
             'avg_neg_distance': torch.mean(neg_distances).item(),
             'active_triplets': torch.sum(losses > 0).item(),

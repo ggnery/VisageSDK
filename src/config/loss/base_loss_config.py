@@ -15,6 +15,3 @@ class LossConfig(BaseConfig):
         super().__init__(config_path)
         self.embedding_size = backbone_info["embedding_size"]
         self.num_classes = dataset_info["num_classes"]
-
-
-BaseLossConfig = LossConfig

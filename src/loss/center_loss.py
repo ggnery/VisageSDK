@@ -56,10 +56,8 @@ class CenterLoss(BaseLoss):
 
         loss = cross_entropy_loss + self.alpha * center_loss
         additional_info = {
-                "loss": loss.item(),
-                "cross_entropy_loss": cross_entropy_loss.item(),
-                "center_loss": center_loss.item(),
-                "accuracy": accuracy.item()
-            }
-
+            "cross_entropy_loss": cross_entropy_loss.item(),
+            "center_loss": center_loss.item(),
+            "cls_accuracy": accuracy.item(),
+        }
         return loss, additional_info

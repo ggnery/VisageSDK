@@ -1,5 +1,5 @@
 from fnmatch import fnmatch
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 import logging
 
 import torch.nn as nn
@@ -72,15 +72,3 @@ def log_freeze_state(module: nn.Module, logger: Optional[logging.Logger] = None)
     logger.info(
         f"{type(module).__name__}: {trainable:,}/{total:,} trainable params ({pct:.1f}%)"
     )
-
-
-def parse_unfreeze_schedule(raw: Optional[Dict]) -> Dict[int, List[str]]:
-    """Normalize unfreeze schedule from YAML. Keys are epoch numbers (int),
-    values are pattern lists.
-    """
-    if not raw:
-        return {}
-    schedule: Dict[int, List[str]] = {}
-    for epoch, patterns in raw.items():
-        schedule[int(epoch)] = list(patterns)
-    return schedule

@@ -1,3 +1,3 @@
-from .base_backbone_config import BackboneConfig, BaseBackboneConfig
+from .base_backbone_config import BackboneConfig
 
-__all__ = ["BackboneConfig", "BaseBackboneConfig"]
+__all__ = ["BackboneConfig"]

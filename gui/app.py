@@ -31,12 +31,10 @@ from registry import (
     DATASETS,
     EARLY_STOPPERS,
     EVAL_DATASETS,
-    EVAL_TRANSFORMATIONS,
     EVALUATORS,
     LOSSES,
     SAMPLERS,
-    TRAIN_TRANSFORMATIONS,
-    VAL_TRANSFORMATIONS,
+    TRANSFORMATIONS,
 )
 
 from gui.run_manager import (
@@ -140,16 +138,13 @@ def render_configure_tab() -> None:
         loss_path, loss_text = yaml_field("Loss", "loss", "loss")
 
         st.subheader("Train/val dataset")
-        dataset_name = st.selectbox(
-            "Dataset variant (train/val pair)",
-            sorted({n.rsplit("_", 1)[0] for n in DATASETS.names()}),
-            key="ds_name",
-        )
+        dataset_name = st.selectbox("Dataset variant", DATASETS.names(), key="ds_name")
         ds_path, ds_text = yaml_field("Dataset", "ds", "dataset/train_val")
 
         st.subheader("Train/val transformation")
-        train_tx_name = st.selectbox("Train transformation", TRAIN_TRANSFORMATIONS.names(), key="train_tx")
-        val_tx_name = st.selectbox("Val transformation", VAL_TRANSFORMATIONS.names(), key="val_tx")
+        tx_names = sorted(TRANSFORMATIONS.names())
+        train_tx_name = st.selectbox("Train transformation", tx_names, key="train_tx")
+        val_tx_name = st.selectbox("Val transformation", tx_names, key="val_tx")
         tx_path, tx_text = yaml_field("Transformation", "tx", "transformation/train_val")
 
     with col_right:
@@ -198,7 +193,7 @@ def render_configure_tab() -> None:
                 key="pe_ds_path",
             )
         with c2:
-            pe_eval_tx = st.selectbox("Eval transformation", EVAL_TRANSFORMATIONS.names(), key="pe_tx")
+            pe_eval_tx = st.selectbox("Eval transformation", sorted(TRANSFORMATIONS.names()), key="pe_tx")
             pe_eval_tx_path = st.selectbox(
                 "Eval transformation config",
                 list_yaml_files("transformation/eval"),
@@ -312,8 +307,10 @@ def render_monitor_tab() -> None:
         st.info("No runs yet. Launch one from the Configure & Train tab.")
         return
 
-    options = ["(current)"] + [str(r.relative_to(REPO_ROOT)) for r in runs] if st.session_state.training_run else [str(r.relative_to(REPO_ROOT)) for r in runs]
-    selection = st.selectbox("Run", options, key="monitor_run")
+    run_options = [str(r.relative_to(REPO_ROOT)) for r in runs]
+    if st.session_state.training_run:
+        run_options = ["(current)"] + run_options
+    selection = st.selectbox("Run", run_options, key="monitor_run")
     if selection == "(current)":
         run_dir = st.session_state.training_run.run_dir
     else:
@@ -437,7 +434,7 @@ def render_evaluate_tab() -> None:
         eval_dataset = st.selectbox("Eval dataset", EVAL_DATASETS.names(), key="eval_ds_name")
         ds_path, ds_text = yaml_field("Eval dataset", "eval_ds_yaml", "dataset/eval")
     with col2:
-        eval_tx = st.selectbox("Eval transformation", EVAL_TRANSFORMATIONS.names(), key="eval_tx_name")
+        eval_tx = st.selectbox("Eval transformation", sorted(TRANSFORMATIONS.names()), key="eval_tx_name")
         tx_path, tx_text = yaml_field("Eval transformation", "eval_tx_yaml", "transformation/eval")
         evaluator_name = st.selectbox("Evaluator", EVALUATORS.names(), key="evaluator_name")
         eval_path, eval_text = yaml_field("Evaluator", "evaluator_yaml", "evaluator")

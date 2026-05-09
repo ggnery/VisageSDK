@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import IO, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -26,11 +26,23 @@ class RunHandle:
     run_dir: Path
     process: Optional[subprocess.Popen] = None
     log_path: Optional[Path] = None
+    log_file: Optional[IO] = None
     env: Dict[str, str] = field(default_factory=dict)
 
     @property
     def is_alive(self) -> bool:
-        return self.process is not None and self.process.poll() is None
+        if self.process is None:
+            return False
+        alive = self.process.poll() is None
+        # Close the log file once the subprocess has exited so we don't leak FDs
+        # across long Streamlit sessions.
+        if not alive and self.log_file is not None:
+            try:
+                self.log_file.close()
+            except Exception:
+                pass
+            self.log_file = None
+        return alive
 
     @property
     def returncode(self) -> Optional[int]:
@@ -55,13 +67,11 @@ def write_yaml(path: Path, content: str | dict) -> None:
         path.write_text(content)
 
 
-def launch_training(env: Dict[str, str], run_dir: Path) -> RunHandle:
-    """Spawn `train.py` with the given env. Logs go to <run_dir>/train.log."""
-    log_path = run_dir / "train.log"
+def _spawn(script: str, env: Dict[str, str], log_path: Path) -> Tuple[subprocess.Popen, IO]:
     full_env = {**os.environ, **env}
     log_file = open(log_path, "w", buffering=1)
     process = subprocess.Popen(
-        [sys.executable, "train.py"],
+        [sys.executable, script],
         cwd=str(REPO_ROOT),
         env=full_env,
         stdout=log_file,
@@ -69,25 +79,22 @@ def launch_training(env: Dict[str, str], run_dir: Path) -> RunHandle:
         bufsize=1,
         text=True,
     )
+    return process, log_file
+
+
+def launch_training(env: Dict[str, str], run_dir: Path) -> RunHandle:
+    """Spawn `train.py` with the given env. Logs go to <run_dir>/train.log."""
+    log_path = run_dir / "train.log"
+    process, log_file = _spawn("train.py", env, log_path)
     (run_dir / "env.json").write_text(json.dumps(env, indent=2))
-    return RunHandle(run_dir=run_dir, process=process, log_path=log_path, env=env)
+    return RunHandle(run_dir=run_dir, process=process, log_path=log_path, log_file=log_file, env=env)
 
 
 def launch_evaluation(env: Dict[str, str], run_dir: Path) -> RunHandle:
     """Spawn `eval.py` with the given env. Logs go to <run_dir>/eval.log."""
     log_path = run_dir / "eval.log"
-    full_env = {**os.environ, **env}
-    log_file = open(log_path, "w", buffering=1)
-    process = subprocess.Popen(
-        [sys.executable, "eval.py"],
-        cwd=str(REPO_ROOT),
-        env=full_env,
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
-        bufsize=1,
-        text=True,
-    )
-    return RunHandle(run_dir=run_dir, process=process, log_path=log_path, env=env)
+    process, log_file = _spawn("eval.py", env, log_path)
+    return RunHandle(run_dir=run_dir, process=process, log_path=log_path, log_file=log_file, env=env)
 
 
 def stop_run(handle: RunHandle) -> None:
@@ -99,6 +106,12 @@ def stop_run(handle: RunHandle) -> None:
             handle.process.wait(timeout=10)
         except subprocess.TimeoutExpired:
             handle.process.kill()
+    if handle.log_file is not None:
+        try:
+            handle.log_file.close()
+        except Exception:
+            pass
+        handle.log_file = None
 
 
 def tail_log(log_path: Optional[Path], max_lines: int = 200) -> str:

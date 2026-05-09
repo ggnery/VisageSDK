@@ -19,7 +19,7 @@ from early_stopper.base_early_stopper import BaseEarlyStopper
 from evaluator.base_evaluator import BaseEvaluator
 from loss.base_loss import BaseLoss
 from tools.freezer import log_freeze_state, unfreeze_by_patterns
-from tools.seed import make_dataloader_generator, seed_worker, set_seed
+from tools.seed import make_dataloader_generator, seed_worker
 
 
 _DTYPE_MAP = {"float16": torch.float16, "bfloat16": torch.bfloat16, "fp16": torch.float16, "bf16": torch.bfloat16}
@@ -58,7 +58,8 @@ class Trainer:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
 
-        set_seed(config.seed, deterministic=config.deterministic)
+        # NOTE: set_seed is called in TrainerBuilder before model instantiation;
+        # by the time we get here, weight init is already deterministic.
 
         self.device = torch.device(config.device)
         self.config = config
@@ -131,6 +132,11 @@ class Trainer:
                 config.checkpoint_load_scheduler,
                 config.checkpoint_load_optimizer,
             )
+            # `requires_grad` is not part of state_dict, so the freeze state at this
+            # point is whatever the builder set up before training started. Replay
+            # unfreeze events that happened on or before the checkpoint epoch so
+            # the trainable set matches what the run was using when it stopped.
+            self._replay_unfreeze_up_to(self.epoch - 1)
 
         self.checkpoint_save_dir = Path(config.checkpoint_save_dir)
         self.dataset_class_name = train_dataset.__class__.__name__.replace("Train", "")
@@ -151,7 +157,7 @@ class Trainer:
 
     def train(self):
         for self.epoch in range(self.epoch, self.num_epochs + 1):
-            self._apply_unfreeze_schedule()
+            self._apply_unfreeze_schedule(self.epoch)
             train_loss, train_stats = self.train_epoch()
             val_loss, val_stats = self.validate_epoch()
             current_lr = self.scheduler.get_last_lr()[0]
@@ -189,15 +195,33 @@ class Trainer:
             self.writer.flush()
             self.writer.close()
 
-    def _apply_unfreeze_schedule(self) -> None:
-        patterns = self.config.unfreeze_at_epoch.get(self.epoch)
+    def _apply_unfreeze_schedule(self, epoch: int) -> None:
+        patterns = self.config.unfreeze_at_epoch.get(epoch)
         if not patterns:
             return
         unfrozen = unfreeze_by_patterns(self.backbone, patterns)
         if unfrozen:
             self.logger.info(
-                f"Epoch {self.epoch}: unfroze {len(unfrozen)} params matching {patterns}"
+                f"Epoch {epoch}: unfroze {len(unfrozen)} params matching {patterns}"
             )
+            log_freeze_state(self.backbone, self.logger)
+
+    def _replay_unfreeze_up_to(self, last_completed_epoch: int) -> None:
+        """Re-apply every unfreeze event scheduled at epoch <= last_completed_epoch.
+
+        Used after `load_checkpoint` since `requires_grad` is not persisted in
+        state_dict; without this, resuming a run wipes the progressive
+        unfreezes that happened before the checkpoint was saved.
+        """
+        if last_completed_epoch < 1:
+            return
+        replayed = 0
+        for ep in sorted(self.config.unfreeze_at_epoch):
+            if ep <= last_completed_epoch:
+                unfrozen = unfreeze_by_patterns(self.backbone, self.config.unfreeze_at_epoch[ep])
+                replayed += len(unfrozen)
+        if replayed:
+            self.logger.info(f"Replayed {replayed} unfreeze events up to epoch {last_completed_epoch}")
             log_freeze_state(self.backbone, self.logger)
 
     def _autocast(self):
@@ -205,25 +229,25 @@ class Trainer:
             return nullcontext()
         return torch.amp.autocast(device_type="cuda", dtype=self.amp_dtype)
 
-    def _step_with_scaler(self) -> None:
-        if self.grad_clip_max_norm is not None:
-            self.scaler.unscale_(self.optimizer)
-            torch.nn.utils.clip_grad_norm_(
-                [p for g in self.optimizer.param_groups for p in g["params"] if p.requires_grad],
-                max_norm=self.grad_clip_max_norm,
-                norm_type=self.grad_clip_norm_type,
-            )
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
+    def _step(self, use_scaler: bool) -> None:
+        """Optimizer step with optional AMP scaler and gradient clipping.
 
-    def _step_plain(self) -> None:
+        With AMP fp16: must `unscale_` before clipping so the clip threshold
+        applies to true (post-unscale) gradient magnitudes.
+        """
         if self.grad_clip_max_norm is not None:
+            if use_scaler:
+                self.scaler.unscale_(self.optimizer)
             torch.nn.utils.clip_grad_norm_(
                 [p for g in self.optimizer.param_groups for p in g["params"] if p.requires_grad],
                 max_norm=self.grad_clip_max_norm,
                 norm_type=self.grad_clip_norm_type,
             )
-        self.optimizer.step()
+        if use_scaler:
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            self.optimizer.step()
 
     def train_epoch(self) -> Tuple[float, Dict]:
         total_loss = 0.0
@@ -248,10 +272,9 @@ class Trainer:
 
             if use_scaler:
                 self.scaler.scale(loss).backward()
-                self._step_with_scaler()
             else:
                 loss.backward()
-                self._step_plain()
+            self._step(use_scaler)
 
             batch_size = embeddings.size(0)
             total_loss += loss.item() * batch_size
@@ -264,6 +287,9 @@ class Trainer:
 
             pbar.set_postfix({"loss": loss.item()})
 
+        if total_samples == 0:
+            self.logger.warning("Train epoch saw zero samples; skipping averaging.")
+            return 0.0, {}
         avg_loss = total_loss / total_samples
         epoch_stats = {k: v / n_batches for k, v in running_stats.items()}
         return avg_loss, epoch_stats
@@ -298,6 +324,9 @@ class Trainer:
 
                 pbar.set_postfix({"loss": loss.item()})
 
+        if total_samples == 0:
+            self.logger.warning("Val epoch saw zero samples; skipping averaging.")
+            return 0.0, {}
         avg_loss = total_loss / total_samples
         epoch_stats = {k: v / n_batches for k, v in running_stats.items()}
         return avg_loss, epoch_stats
@@ -373,7 +402,8 @@ class Trainer:
     def save_stats(self, train_loss: float, val_loss: float,
                    train_stats: Dict, val_stats: Dict,
                    eval_results: Optional[Dict[str, float]] = None):
-        history_path = self.checkpoint_save_dir / self._checkpoint_name("training_history").replace(".pth", ".json")
+        history_name = self._checkpoint_name("training_history").replace(".pth", ".json")
+        history_path = self.checkpoint_save_dir / history_name
         full_history: Dict = {}
         if history_path.exists():
             with open(history_path, "r") as f:

@@ -48,10 +48,5 @@ class MarginCosineProductLoss(BaseLoss):
             correct = (predicted == y_true).float()
             accuracy = correct.mean()
         
-        # Prepare loss statistics
-        loss_stats = {
-            "margin_cosine_loss": loss.item(),
-            "accuracy": accuracy.item(),
-        }
-        
+        loss_stats = {"cls_accuracy": accuracy.item()}
         return loss, loss_stats

@@ -76,8 +76,8 @@ BACKBONE_CONFIG=./configs/backbone/mobilenetv3.yaml
 TRAIN_VAL_DATASET=image_folder
 TRAIN_VAL_DATASET_CONFIG=./configs/dataset/train_val/casia_webface_train_val.yaml
 
-TRAIN_TRANSFORMATION=casia_webface
-VAL_TRANSFORMATION=casia_webface
+TRAIN_TRANSFORMATION=casia_webface_train
+VAL_TRANSFORMATION=casia_webface_val
 TRAIN_VAL_TRANSFORMATION_CONFIG=./configs/transformation/train_val/casia_webface_train_val_transformation.yaml
 
 LOSS=margin_cosine
@@ -169,11 +169,9 @@ The trainer uses a slightly richer config (`TrainerConfig`) because it has struc
 | --- | --- |
 | Backbones | `inception_resnet_v1`, `inception_resnet_v2`, `inception_v4`, `mobilenetv3` |
 | Losses | `triplet`, `center`, `cross_entropy`, `margin_cosine` |
-| Train/val datasets | `image_folder` (resolves to `image_folder_train` / `image_folder_val` internally) |
+| Train/val datasets | `image_folder` (single class with `split="train"`/`"val"`) |
 | Eval datasets | `lfw_pairs`, `identification` |
-| Train transformations | `vgg_face2`, `casia_webface` |
-| Val transformations | `vgg_face2`, `casia_webface` |
-| Eval transformations | `lfw` |
+| Transformations | `vgg_face2_train`, `vgg_face2_val`, `casia_webface_train`, `casia_webface_val`, `lfw_eval` |
 | Samplers | `facenet` |
 | Early stoppers | `adaptative` |
 | Evaluators | `verification`, `identification` |

@@ -3,29 +3,28 @@ from pathlib import Path
 
 from config.backbone.base_backbone_config import BackboneConfig
 from config.batch_sampler.base_batch_sampler_config import BatchSamplerConfig
+from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
 from config.dataset.train_val.base_train_val_dataset_config import TrainValDatasetConfig
 from config.early_stopper.base_early_stopper_config import EarlyStopperConfig
 from config.env_config import ENVConfig
+from config.evaluator.base_evaluator_config import EvaluatorConfig
 from config.loss.base_loss_config import LossConfig
 from config.trainer.trainer_config import TrainerConfig
 from config.transformation.base_transformation_config import TransformationConfig
-from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
-from config.evaluator.base_evaluator_config import EvaluatorConfig
 from registry import (
     BACKBONES,
     DATASETS,
     EARLY_STOPPERS,
     EVAL_DATASETS,
-    EVAL_TRANSFORMATIONS,
     EVALUATORS,
     LOSSES,
     SAMPLERS,
-    TRAIN_TRANSFORMATIONS,
-    VAL_TRANSFORMATIONS,
+    TRANSFORMATIONS,
 )
 from tools.freezer import freeze_by_patterns, log_freeze_state
 from tools.optimizer import build_optimizer
 from tools.scheduler import build_scheduler
+from tools.seed import set_seed
 from trainer.trainer import Trainer
 
 # Trigger registry population. Side-effect imports — keep them.
@@ -44,6 +43,8 @@ class TrainerBuilder:
         self.env = env_config
         self.config_str = ""
         self._build_configs()
+        # Seed BEFORE instantiating any model so weight initialization is reproducible.
+        set_seed(self.trainer_config.seed, deterministic=self.trainer_config.deterministic)
         self._build_instances()
 
     def _build_configs(self) -> None:
@@ -91,15 +92,14 @@ class TrainerBuilder:
         backbone_cls = BACKBONES.get(self.env.backbone)
         self.backbone = backbone_cls(self.backbone_config).to(self.backbone_config.device)
 
-        train_tx_cls = TRAIN_TRANSFORMATIONS.get(self.env.train_transformation)
-        val_tx_cls = VAL_TRANSFORMATIONS.get(self.env.val_transformation)
+        train_tx_cls = TRANSFORMATIONS.get(self.env.train_transformation)
+        val_tx_cls = TRANSFORMATIONS.get(self.env.val_transformation)
         self.train_transformation = train_tx_cls(self.transformation_config)
         self.val_transformation = val_tx_cls(self.transformation_config)
 
-        train_ds_cls = DATASETS.get(f"{self.env.train_val_dataset}_train")
-        val_ds_cls = DATASETS.get(f"{self.env.train_val_dataset}_val")
-        self.train_dataset = train_ds_cls(self.dataset_config, self.train_transformation)
-        self.val_dataset = val_ds_cls(self.dataset_config, self.val_transformation)
+        ds_cls = DATASETS.get(self.env.train_val_dataset)
+        self.train_dataset = ds_cls(self.dataset_config, self.train_transformation, split="train")
+        self.val_dataset = ds_cls(self.dataset_config, self.val_transformation, split="val")
 
         loss_cls = LOSSES.get(self.env.loss)
         self.loss = loss_cls(self.loss_config).to(self.loss_config.device)
@@ -135,7 +135,7 @@ class TrainerBuilder:
             "embedding_size": self.backbone_config.embedding_size,
         }
 
-        eval_tx_cls = EVAL_TRANSFORMATIONS.get(block["transformation"])
+        eval_tx_cls = TRANSFORMATIONS.get(block["transformation"])
         eval_tx_cfg = TransformationConfig(block["transformation_config"], backbone_info)
         eval_tx = eval_tx_cls(eval_tx_cfg)
 

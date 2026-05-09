@@ -13,6 +13,3 @@ class TrainValDatasetConfig(BaseConfig):
     def __init__(self, config_path: str, backbone_info: Dict) -> None:
         super().__init__(config_path)
         self.input_size = backbone_info["input_size"]
-
-
-BaseTrainValDatasetConfig = TrainValDatasetConfig

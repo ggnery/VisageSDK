@@ -1,3 +1,3 @@
-from .base_loss_config import LossConfig, BaseLossConfig
+from .base_loss_config import LossConfig
 
-__all__ = ["LossConfig", "BaseLossConfig"]
+__all__ = ["LossConfig"]

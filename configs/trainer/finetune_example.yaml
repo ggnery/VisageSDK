@@ -94,7 +94,7 @@ periodic_eval:
   every_n_epochs: 5
   dataset: lfw_pairs
   dataset_config: ./configs/dataset/eval/lfw_eval.yaml
-  transformation: lfw
+  transformation: lfw_eval
   transformation_config: ./configs/transformation/eval/lfw_eval_transformation.yaml
   evaluator: verification
   evaluator_config: ./configs/evaluator/lfw_verification.yaml

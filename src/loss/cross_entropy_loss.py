@@ -22,11 +22,7 @@ class CrossEntropyLoss(BaseLoss):
             correct = (predicted == y_true).float()
             accuracy = correct.mean()
         
-        loss_stats = {
-            "cross_entropy_loss": loss.item(),
-            "accuracy": accuracy.item()
-        }
-        
+        loss_stats = {"cls_accuracy": accuracy.item()}
         return loss, loss_stats
         
         

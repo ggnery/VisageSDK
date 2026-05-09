@@ -1,3 +1,3 @@
-from .base_early_stopper_config import EarlyStopperConfig, BaseEarlyStopperConfig
+from .base_early_stopper_config import EarlyStopperConfig
 
-__all__ = ["EarlyStopperConfig", "BaseEarlyStopperConfig"]
+__all__ = ["EarlyStopperConfig"]

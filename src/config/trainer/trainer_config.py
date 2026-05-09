@@ -102,7 +102,8 @@ class TrainerConfig(BaseConfig):
 
         grad_clip = self._params.get("gradient_clip") or {}
         self.grad_clip_max_norm = grad_clip.get("max_norm")
-        self.grad_clip_norm_type = float(grad_clip.get("norm_type", 2.0))
+        # Use `or 2.0` so explicit YAML `norm_type: null` falls back to the default.
+        self.grad_clip_norm_type = float(grad_clip.get("norm_type") or 2.0)
 
         logging_block = self._params.get("logging") or {}
         self.tensorboard_enabled = bool(logging_block.get("tensorboard", False))

@@ -1,3 +1,3 @@
-from .base_train_val_dataset_config import TrainValDatasetConfig, BaseTrainValDatasetConfig
+from .base_train_val_dataset_config import TrainValDatasetConfig
 
-__all__ = ["TrainValDatasetConfig", "BaseTrainValDatasetConfig"]
+__all__ = ["TrainValDatasetConfig"]
