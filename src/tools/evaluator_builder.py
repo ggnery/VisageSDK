@@ -1,7 +1,3 @@
-import logging
-from datetime import datetime
-from pathlib import Path
-
 import torch
 
 from config.backbone.base_backbone_config import BackboneConfig
@@ -57,7 +53,7 @@ class EvaluatorBuilder:
         backbone_cls = BACKBONES.get(self.env.backbone)
         self.backbone = backbone_cls(self.backbone_config).to(device)
 
-        ckpt = torch.load(self.env.checkpoint_path, map_location=device)
+        ckpt = torch.load(self.env.checkpoint_path, map_location=device, weights_only=False)
         if "backbone_state_dict" in ckpt:
             self.backbone.load_state_dict(ckpt["backbone_state_dict"], strict=False)
         else:

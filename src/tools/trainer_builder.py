@@ -9,10 +9,15 @@ from config.env_config import ENVConfig
 from config.loss.base_loss_config import LossConfig
 from config.trainer.trainer_config import TrainerConfig
 from config.transformation.base_transformation_config import TransformationConfig
+from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
+from config.evaluator.base_evaluator_config import EvaluatorConfig
 from registry import (
     BACKBONES,
     DATASETS,
     EARLY_STOPPERS,
+    EVAL_DATASETS,
+    EVAL_TRANSFORMATIONS,
+    EVALUATORS,
     LOSSES,
     SAMPLERS,
     TRAIN_TRANSFORMATIONS,
@@ -27,9 +32,11 @@ from trainer.trainer import Trainer
 import backbone  # noqa: F401
 import loss  # noqa: F401
 import dataset.train_val  # noqa: F401
+import dataset.eval  # noqa: F401
 import early_stopper  # noqa: F401
 import batch_sampler  # noqa: F401
 import transformation  # noqa: F401
+import evaluator  # noqa: F401
 
 
 class TrainerBuilder:
@@ -116,6 +123,30 @@ class TrainerBuilder:
         self.optimizer = build_optimizer(self.backbone, self.loss, self.trainer_config)
         self.scheduler = build_scheduler(self.optimizer, self.trainer_config)
 
+        self.periodic_evaluator = self._build_periodic_evaluator()
+
+    def _build_periodic_evaluator(self):
+        block = self.trainer_config.periodic_eval
+        if not block or not block.get("enabled", True):
+            return None
+
+        backbone_info = {
+            "input_size": self.backbone_config.input_size,
+            "embedding_size": self.backbone_config.embedding_size,
+        }
+
+        eval_tx_cls = EVAL_TRANSFORMATIONS.get(block["transformation"])
+        eval_tx_cfg = TransformationConfig(block["transformation_config"], backbone_info)
+        eval_tx = eval_tx_cls(eval_tx_cfg)
+
+        eval_ds_cls = EVAL_DATASETS.get(block["dataset"])
+        eval_ds_cfg = EvalDatasetConfig(block["dataset_config"], backbone_info)
+        eval_ds = eval_ds_cls(eval_ds_cfg, eval_tx)
+
+        evaluator_cls = EVALUATORS.get(block["evaluator"])
+        evaluator_cfg = EvaluatorConfig(block["evaluator_config"])
+        return evaluator_cls(evaluator_cfg, eval_ds, self.backbone)
+
     def build_trainer(self) -> Trainer:
         return Trainer(
             self.trainer_config,
@@ -127,4 +158,5 @@ class TrainerBuilder:
             self.scheduler,
             self.sampler,
             self.early_stopper,
+            self.periodic_evaluator,
         )

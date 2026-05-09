@@ -34,6 +34,20 @@ class TrainerConfig(BaseConfig):
     freeze_except: Optional[List[str]]
     unfreeze_at_epoch: Dict[int, List[str]]
 
+    seed: Optional[int]
+    deterministic: bool
+
+    amp_enabled: bool
+    amp_dtype: str
+
+    grad_clip_max_norm: Optional[float]
+    grad_clip_norm_type: float
+
+    tensorboard_enabled: bool
+    tensorboard_log_dir: Optional[str]
+
+    periodic_eval: Optional[Dict[str, Any]]
+
     def __init__(self, config_path: str) -> None:
         super().__init__(config_path)
 
@@ -78,3 +92,20 @@ class TrainerConfig(BaseConfig):
             raise ValueError("freeze: provide either `patterns` or `except`, not both")
         raw_schedule = freeze.get("unfreeze_at_epoch") or {}
         self.unfreeze_at_epoch = {int(k): list(v) for k, v in raw_schedule.items()}
+
+        self.seed = self._params.get("seed")
+        self.deterministic = bool(self._params.get("deterministic", False))
+
+        amp = self._params.get("amp") or {}
+        self.amp_enabled = bool(amp.get("enabled", False))
+        self.amp_dtype = str(amp.get("dtype", "float16"))
+
+        grad_clip = self._params.get("gradient_clip") or {}
+        self.grad_clip_max_norm = grad_clip.get("max_norm")
+        self.grad_clip_norm_type = float(grad_clip.get("norm_type", 2.0))
+
+        logging_block = self._params.get("logging") or {}
+        self.tensorboard_enabled = bool(logging_block.get("tensorboard", False))
+        self.tensorboard_log_dir = logging_block.get("log_dir")
+
+        self.periodic_eval = self._params.get("periodic_eval")

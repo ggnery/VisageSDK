@@ -4,3 +4,5 @@ PyYAML==6.0.2
 matplotlib==3.10.6
 tqdm==4.67.1
 python-dotenv==1.1.1
+numpy>=1.26
+tensorboard>=2.16

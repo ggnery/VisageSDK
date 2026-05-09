@@ -152,8 +152,12 @@ def lfw_kfold_accuracy(
         test_mask = fold_indices == fold
         if not test_mask.any():
             continue
-        thr, _ = best_threshold(distances[train_mask], labels[train_mask])
-        acc = verification_accuracy(distances[test_mask], labels[test_mask], thr)
+        if not train_mask.any():
+            # Single fold: tune and evaluate on the same set (no held-out split possible).
+            thr, acc = best_threshold(distances[test_mask], labels[test_mask])
+        else:
+            thr, _ = best_threshold(distances[train_mask], labels[train_mask])
+            acc = verification_accuracy(distances[test_mask], labels[test_mask], thr)
         accuracies.append(acc)
         thresholds.append(thr)
     accs = np.array(accuracies)

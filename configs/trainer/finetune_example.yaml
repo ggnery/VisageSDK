@@ -65,3 +65,36 @@ checkpoint:
     loss: False
     scheduler: False
     optimizer: False
+
+# --- Modernization knobs (all optional) ---
+
+# Reproducibility. seed=null skips seeding entirely; deterministic forces
+# cuDNN deterministic mode (slower but bit-for-bit reproducible).
+seed: 42
+deterministic: false
+
+# Mixed precision (only active on CUDA). dtype: float16 | bfloat16.
+amp:
+  enabled: true
+  dtype: float16
+
+# Gradient clipping. Set max_norm to null to disable.
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+# TensorBoard scalar logging. log_dir defaults to <checkpoint_save_dir>/runs.
+logging:
+  tensorboard: true
+  log_dir: null
+
+# Run an evaluator inline every N epochs and log the metrics to TensorBoard.
+periodic_eval:
+  enabled: true
+  every_n_epochs: 5
+  dataset: lfw_pairs
+  dataset_config: ./configs/dataset/eval/lfw_eval.yaml
+  transformation: lfw
+  transformation_config: ./configs/transformation/eval/lfw_eval_transformation.yaml
+  evaluator: verification
+  evaluator_config: ./configs/evaluator/lfw_verification.yaml
