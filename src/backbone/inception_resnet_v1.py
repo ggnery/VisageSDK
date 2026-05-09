@@ -8,7 +8,14 @@ from config.backbone.base_backbone_config import BackboneConfig
 
 
 class BasicConv2d(nn.Module):
-    def __init__(self, in_planes, out_planes, kernel_size, stride, padding=0):
+    def __init__(
+        self,
+        in_planes: int,
+        out_planes: int,
+        kernel_size: int | tuple[int, int],
+        stride: int | tuple[int, int],
+        padding: int | tuple[int, int] = 0,
+    ):
         super().__init__()
         self.conv = nn.Conv2d(
             in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, bias=False

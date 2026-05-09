@@ -67,12 +67,12 @@ class TrainerBuilder:
         self.config_str += self.loss_config.get_config_string()
 
         self.early_stopper_config = None
-        if self.env.early_stopper:
+        if self.env.early_stopper and self.env.early_stopper_config:
             self.early_stopper_config = EarlyStopperConfig(self.env.early_stopper_config)
             self.config_str += self.early_stopper_config.get_config_string()
 
         self.sampler_config = None
-        if self.env.sampler:
+        if self.env.sampler and self.env.sampler_config:
             self.sampler_config = BatchSamplerConfig(self.env.sampler_config)
             self.config_str += self.sampler_config.get_config_string()
 
@@ -102,11 +102,11 @@ class TrainerBuilder:
         self.loss = loss_cls(self.loss_config).to(self.loss_config.device)
 
         self.early_stopper = None
-        if self.early_stopper_config is not None:
+        if self.early_stopper_config is not None and self.env.early_stopper:
             self.early_stopper = EARLY_STOPPERS.get(self.env.early_stopper)(self.early_stopper_config)
 
         self.sampler = None
-        if self.sampler_config is not None:
+        if self.sampler_config is not None and self.env.sampler:
             self.sampler = SAMPLERS.get(self.env.sampler)(self.sampler_config, self.train_dataset)
 
         if self.trainer_config.freeze_patterns or self.trainer_config.freeze_except:

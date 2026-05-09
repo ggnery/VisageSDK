@@ -229,8 +229,10 @@ def render_configure_tab() -> None:
         write_yaml(cfg_dir / "transformation.yaml", tx_text)
 
         if use_sampler:
+            assert sampler_text is not None
             write_yaml(cfg_dir / "sampler.yaml", sampler_text)
         if use_es:
+            assert es_text is not None
             write_yaml(cfg_dir / "early_stopper.yaml", es_text)
 
         trainer_yaml = yaml.safe_load(trainer_text) or {}
@@ -251,6 +253,10 @@ def render_configure_tab() -> None:
             trainer_yaml["logging"]["tensorboard"] = True
 
         if use_periodic_eval:
+            # All `pe_*` fields are assigned together inside the matching block above.
+            assert pe_eval_dataset_path is not None
+            assert pe_eval_tx_path is not None
+            assert pe_evaluator_path is not None
             # Snapshot the eval YAMLs into the run dir
             pe_ds_dst = cfg_dir / "eval_dataset.yaml"
             pe_tx_dst = cfg_dir / "eval_transformation.yaml"
@@ -284,9 +290,11 @@ def render_configure_tab() -> None:
             "TRAINER_CONFIG": str(cfg_dir / "trainer.yaml"),
         }
         if use_sampler:
+            assert sampler_name is not None
             env["SAMPLER"] = sampler_name
             env["SAMPLER_CONFIG"] = str(cfg_dir / "sampler.yaml")
         if use_es:
+            assert es_name is not None
             env["EARLY_STOPPER"] = es_name
             env["EARLY_STOPPER_CONFIG"] = str(cfg_dir / "early_stopper.yaml")
 
@@ -364,8 +372,8 @@ def render_monitor_tab() -> None:
             st.subheader(title)
             data = {tag: dict(scalars[tag]) for tag in tags}
             steps = sorted({s for series in data.values() for s in series})
-            chart_data = {tag: [data[tag].get(s, None) for s in steps] for tag in tags}
-            chart_data["epoch"] = steps
+            chart_data: dict[str, list] = {tag: [data[tag].get(s, None) for s in steps] for tag in tags}
+            chart_data["epoch"] = list(steps)
             import pandas as pd
 
             df = pd.DataFrame(chart_data).set_index("epoch")

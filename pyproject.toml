@@ -81,15 +81,20 @@ pythonVersion = "3.12"
 venvPath = "."
 venv = ".venv"
 typeCheckingMode = "basic"
-# These are noisy and not actionable in this code style — the framework
-# leans heavily on YAML-driven attribute access via BaseConfig.__getattr__.
+# These reports are noisy without buying us much — the framework leans
+# heavily on YAML-driven attribute access via BaseConfig.__getattr__,
+# and torch re-exports many names without listing them in __all__.
 reportMissingImports = "none"
 reportMissingModuleSource = "none"
-reportUnusedImport = "warning"
+reportUnusedImport = "none"  # ruff (F401) handles real dead imports
 reportUnusedVariable = "none"
 reportAttributeAccessIssue = "none"
+reportPrivateImportUsage = "none"
 reportArgumentType = "warning"
 reportGeneralTypeIssues = "warning"
-# torch re-exports many names through __init__.py without listing them in __all__;
-# pyright flags torch.cat, torch.device, etc. as "private". They aren't.
-reportPrivateImportUsage = "none"
+
+[[tool.pyright.executionEnvironments]]
+# Tests use minimal Stub classes that duck-type the real components;
+# pyright's nominal-typing complaints there are false positives.
+root = "tests"
+reportArgumentType = "none"

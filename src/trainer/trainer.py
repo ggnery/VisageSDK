@@ -170,7 +170,7 @@ class Trainer:
             self._apply_unfreeze_schedule(self.epoch)
             train_loss, train_stats = self.train_epoch()
             val_loss, val_stats = self.validate_epoch()
-            current_lr = self.scheduler.get_last_lr()[0]
+            current_lr = float(self.scheduler.get_last_lr()[0])
 
             self.logger.info(
                 f"Epoch {self.epoch}/{self.num_epochs} - "

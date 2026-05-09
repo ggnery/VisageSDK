@@ -194,10 +194,8 @@ def cmc_curve(
     sim = similarity.detach().cpu()
     pl = probe_labels.detach().cpu().numpy()
     gl = gallery_labels.detach().cpu().numpy()
-    n_gallery = gl.shape[0]
-    if max_rank is None:
-        max_rank = n_gallery
-    max_rank = int(max_rank)
+    n_gallery = int(gl.shape[0])
+    max_rank = int(max_rank) if max_rank is not None else n_gallery
 
     # For each probe, sort gallery indices by descending similarity.
     order = torch.argsort(sim, dim=1, descending=True).numpy()

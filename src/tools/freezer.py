@@ -33,6 +33,7 @@ def freeze_by_patterns(
         if patterns is not None:
             should_freeze = _match_any(name, patterns)
         else:
+            assert except_patterns is not None  # validated above
             should_freeze = not _match_any(name, except_patterns)
         if should_freeze:
             p.requires_grad = False
