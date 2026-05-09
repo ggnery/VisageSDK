@@ -1,6 +1,6 @@
 from typing import override
 from backbone.base_backbone import BaseBackbone
-from config.backbone.inception_resnet_v1_config import InceptionResNetV1Config
+from config.backbone.base_backbone_config import BackboneConfig
 
 import torch
 from torch import nn
@@ -185,7 +185,7 @@ class InceptionResNetV1(BaseBackbone):
     Args:
         BaseBackbone (_type_): _description_
     """
-    def __init__(self, backbone_config: InceptionResNetV1Config) -> None:
+    def __init__(self, backbone_config: BackboneConfig) -> None:
         super().__init__(backbone_config)
         
         self.dropout_prob = 1 - backbone_config.dropout_keep

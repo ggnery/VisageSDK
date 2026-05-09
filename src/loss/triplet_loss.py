@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from typing import Dict, Tuple, List, Optional, override
 from collections import defaultdict
 
-from config.loss.triplet_loss_config import TripletLossConfig
+from config.loss.base_loss_config import LossConfig
 from loss.base_loss import BaseLoss
 
 
@@ -18,7 +18,7 @@ class TripletLoss(BaseLoss):
     4. Proper batch construction with identity sampling
     """
     
-    def __init__(self, loss_config: TripletLossConfig):
+    def __init__(self, loss_config: LossConfig):
         """
         Initialize TripletLoss.
         

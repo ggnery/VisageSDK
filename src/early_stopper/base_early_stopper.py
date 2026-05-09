@@ -1,19 +1,19 @@
 from abc import ABC
 
-from config.early_stopper.base_early_stopper_config import BaseEarlyStopperConfig
-from trainer.training_context import EpochContext
+from config.early_stopper.base_early_stopper_config import EarlyStopperConfig
+
 
 class BaseEarlyStopper(ABC):
-    def __init__(self, config: BaseEarlyStopperConfig):
+    def __init__(self, config: EarlyStopperConfig):
         self.config = config
-        
-    def early_stop(self, epoch_ctx: EpochContext) -> bool:
-        """Override this method to implement custom early stopping logic
+
+    def early_stop(self, val_loss: float) -> bool:
+        """Override to implement custom early stopping logic.
 
         Args:
-            val_loss (float): current validation loss
+            val_loss: current validation loss
 
         Returns:
-            bool: True if early stopping should be triggered, False otherwise
+            True if training should stop, False otherwise.
         """
         raise NotImplementedError()

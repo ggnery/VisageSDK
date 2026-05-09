@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from loss.base_loss import BaseLoss
-from config.loss.margin_cosine_product_loss_config import MarginCosineProductLossConfig
+from config.loss.base_loss_config import LossConfig
 
 
 class MarginCosineProductLoss(BaseLoss):
@@ -15,7 +15,7 @@ class MarginCosineProductLoss(BaseLoss):
     """
     def __init__(
         self,
-        loss_config: MarginCosineProductLossConfig
+        loss_config: LossConfig
     ):
         super().__init__(loss_config)
         

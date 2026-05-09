@@ -6,7 +6,7 @@ import torch
 from torch import nn, Tensor
 
 from backbone.base_backbone import BaseBackbone
-from config.backbone.mobilenetv3_config import MobileNetV3Config
+from config.backbone.base_backbone_config import BackboneConfig
 
 
 def _make_divisible(v: float, divisor: int = 8) -> int:
@@ -226,7 +226,7 @@ class MobileNetV3(BaseBackbone):
     """
     This block implements the MobileNetV3 from the framework on https://github.com/yakhyo/face-recognition.
     """
-    def __init__(self, config: MobileNetV3Config) -> None:
+    def __init__(self, config: BackboneConfig) -> None:
         super().__init__(config)
         
         # Get configuration parameters

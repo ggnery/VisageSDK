@@ -1,14 +1,18 @@
 from typing import Dict, List
 from config.base_config import BaseConfig
 
-class BaseEvalDatasetConfig(BaseConfig):
-    eval_dir: str
+
+class EvalDatasetConfig(BaseConfig):
+    """Eval dataset config.
+
+    Required YAML keys: eval_dir (other keys via attr lookup).
+    Injected: input_size (from backbone).
+    """
     input_size: List[int]
 
-    def __init__(self, config_path: str, backbone_additional_info: Dict) -> None:
+    def __init__(self, config_path: str, backbone_info: Dict) -> None:
         super().__init__(config_path)
+        self.input_size = backbone_info["input_size"]
 
-        self.eval_dir = self.config["eval_dir"]
-        self.input_size = backbone_additional_info["input_size"]
-        
-        self.build_config()
+
+BaseEvalDatasetConfig = EvalDatasetConfig

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from backbone.base_backbone import BaseBackbone
-from config.backbone.inception_resnet_v2_config import InceptionResNetV2Config
+from config.backbone.base_backbone_config import BackboneConfig
 
 class Conv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, padding, stride=1, bias=True):
@@ -188,7 +188,7 @@ class InceptionC(nn.Module):
 
 
 class InceptionV4(BaseBackbone):
-    def __init__(self, backbone_config: InceptionResNetV2Config):
+    def __init__(self, backbone_config: BackboneConfig):
         super().__init__(backbone_config)        
         self.k=backbone_config.k
         self.l=backbone_config.l 

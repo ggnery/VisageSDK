@@ -1,28 +1,32 @@
 from typing import List, override
 
 from torchvision import transforms
-from config.transformation.train_val.vgg_face2_train_val_transformation_config import VGGFace2TrainValTransformationConfig
+from config.transformation.base_transformation_config import TransformationConfig
 from transformation.base_transformation import BaseTransformation
+
 
 class VGGFace2TrainTransformation(BaseTransformation):
     @override
-    def build_transformation(self, transformation_config: VGGFace2TrainValTransformationConfig) -> List:
+    def build_transformation(self, cfg: TransformationConfig) -> List:
+        train = cfg.train
         return [
-            transforms.RandomHorizontalFlip(p=transformation_config.train_random_horizontal_flip),
-            transforms.RandomRotation(degrees=transformation_config.train_random_rotation),
+            transforms.RandomHorizontalFlip(p=train["random_horizontal_flip"]),
+            transforms.RandomRotation(degrees=train["random_rotation"]),
             transforms.ColorJitter(
-                brightness=transformation_config.train_brightness, 
-                contrast=transformation_config.train_contrast, 
-                saturation=transformation_config.train_saturation
+                brightness=train["color_jitter"]["brightness"],
+                contrast=train["color_jitter"]["contrast"],
+                saturation=train["color_jitter"]["saturation"],
             ),
             transforms.ToTensor(),
-            transforms.Normalize(mean=transformation_config.train_mean_normalize, std=transformation_config.train_std_normalize)
+            transforms.Normalize(mean=train["normalize"]["mean"], std=train["normalize"]["std"]),
         ]
+
 
 class VGGFace2ValTransformation(BaseTransformation):
     @override
-    def build_transformation(self, transformation_config: VGGFace2TrainValTransformationConfig) -> transforms.Compose:
+    def build_transformation(self, cfg: TransformationConfig) -> List:
+        val = cfg.val
         return [
             transforms.ToTensor(),
-            transforms.Normalize(mean=transformation_config.val_mean_normalize, std=transformation_config.val_std_normalize)
+            transforms.Normalize(mean=val["normalize"]["mean"], std=val["normalize"]["std"]),
         ]

@@ -1,5 +1,5 @@
 from typing import Dict, Tuple
-from config.loss.cross_entropy_loss_config import CrossEntropyLossConfig
+from config.loss.base_loss_config import LossConfig
 from loss.base_loss import BaseLoss
 
 from torch import nn
@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torch
 
 class CrossEntropyLoss(BaseLoss):
-    def __init__(self, loss_config: CrossEntropyLossConfig):
+    def __init__(self, loss_config: LossConfig):
         super().__init__(loss_config)
         
         self.linear = nn.Linear(self.embedding_size, self.num_classes, bias=loss_config.use_bias)

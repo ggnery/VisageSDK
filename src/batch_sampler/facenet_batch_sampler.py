@@ -1,8 +1,7 @@
 from typing import override
-from torch.utils.data import Sampler
 import random
 
-from config.batch_sampler.facenet_batch_sampler_config import FacenetBatchSamplerConfig
+from config.batch_sampler.base_batch_sampler_config import BatchSamplerConfig
 from dataset.train_val.base_train_val_dataset import BaseTrainValDataset
 from batch_sampler.base_batch_sampler import BaseBatchSampler
 
@@ -10,8 +9,8 @@ class FacenetBatchSampler(BaseBatchSampler):
     """
     Custom batch sampler for FaceNet training.
     """
-    
-    def __init__(self, config: FacenetBatchSamplerConfig, train_dataset: BaseTrainValDataset):
+
+    def __init__(self, config: BatchSamplerConfig, train_dataset: BaseTrainValDataset):
         """
         Initialize the sampler.
         
