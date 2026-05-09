@@ -6,25 +6,25 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.12"
 dependencies = [
-    "torch>=2.7,<3",
-    "torchvision>=0.22,<1",
+    "torch>=2.11,<3",
+    "torchvision>=0.26,<1",
     "pyyaml>=6.0",
     "matplotlib>=3.10",
     "tqdm>=4.67",
-    "python-dotenv>=1.1",
-    "numpy>=1.26",
-    "tensorboard>=2.16",
-    "streamlit>=1.30",
-    "pandas>=2.0",
-    "pillow>=10",
+    "python-dotenv>=1.2",
+    "numpy>=2.4",
+    "tensorboard>=2.20",
+    "streamlit>=1.57",
+    "pandas>=3.0",
+    "pillow>=12",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=7",
-    "pytest-cov>=4",
-    "ruff>=0.6",
-    "pyright>=1.1",
+    "pytest>=9",
+    "pytest-cov>=7",
+    "ruff>=0.15",
+    "pyright>=1.1.409",
 ]
 
 [tool.uv]

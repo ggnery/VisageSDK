@@ -1882,24 +1882,24 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "matplotlib", specifier = ">=3.10" },
-    { name = "numpy", specifier = ">=1.26" },
-    { name = "pandas", specifier = ">=2.0" },
-    { name = "pillow", specifier = ">=10" },
-    { name = "python-dotenv", specifier = ">=1.1" },
+    { name = "numpy", specifier = ">=2.4" },
+    { name = "pandas", specifier = ">=3.0" },
+    { name = "pillow", specifier = ">=12" },
+    { name = "python-dotenv", specifier = ">=1.2" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "streamlit", specifier = ">=1.30" },
-    { name = "tensorboard", specifier = ">=2.16" },
-    { name = "torch", specifier = ">=2.7,<3" },
-    { name = "torchvision", specifier = ">=0.22,<1" },
+    { name = "streamlit", specifier = ">=1.57" },
+    { name = "tensorboard", specifier = ">=2.20" },
+    { name = "torch", specifier = ">=2.11,<3" },
+    { name = "torchvision", specifier = ">=0.26,<1" },
     { name = "tqdm", specifier = ">=4.67" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "pyright", specifier = ">=1.1" },
-    { name = "pytest", specifier = ">=7" },
-    { name = "pytest-cov", specifier = ">=4" },
-    { name = "ruff", specifier = ">=0.6" },
+    { name = "pyright", specifier = ">=1.1.409" },
+    { name = "pytest", specifier = ">=9" },
+    { name = "pytest-cov", specifier = ">=7" },
+    { name = "ruff", specifier = ">=0.15" },
 ]
 
 [[package]]
