@@ -13,7 +13,10 @@ from pathlib import Path
 import streamlit as st
 import yaml
 
-from gui.run_manager import (
+# `gui/` is intentionally NOT installed as a package (only src/* is — see
+# pyproject.toml). When Streamlit runs the script it adds the script's own
+# directory (gui/) to sys.path, so `run_manager` resolves as a flat module.
+from run_manager import (  # noqa: I001
     RunHandle,
     find_event_files,
     launch_evaluation,
@@ -26,6 +29,7 @@ from gui.run_manager import (
     tail_log,
     write_yaml,
 )
+
 from registry import (
     BACKBONES,
     DATASETS,
@@ -133,43 +137,41 @@ def render_configure_tab() -> None:
     with col_left:
         st.subheader("Backbone")
         backbone_name = st.selectbox("Backbone variant", BACKBONES.names(), key="bb_name")
-        bb_path, bb_text = yaml_field("Backbone", "bb", "backbone", default_pattern=backbone_name)
+        _, bb_text = yaml_field("Backbone", "bb", "backbone", default_pattern=backbone_name)
 
         st.subheader("Loss")
         loss_name = st.selectbox("Loss variant", LOSSES.names(), key="loss_name")
-        loss_path, loss_text = yaml_field("Loss", "loss", "loss")
+        _, loss_text = yaml_field("Loss", "loss", "loss")
 
         st.subheader("Train/val dataset")
         dataset_name = st.selectbox("Dataset variant", DATASETS.names(), key="ds_name")
-        ds_path, ds_text = yaml_field("Dataset", "ds", "dataset/train_val")
+        _, ds_text = yaml_field("Dataset", "ds", "dataset/train_val")
 
         st.subheader("Train/val transformation")
         tx_names = sorted(TRANSFORMATIONS.names())
         train_tx_name = st.selectbox("Train transformation", tx_names, key="train_tx")
         val_tx_name = st.selectbox("Val transformation", tx_names, key="val_tx")
-        tx_path, tx_text = yaml_field("Transformation", "tx", "transformation/train_val")
+        _, tx_text = yaml_field("Transformation", "tx", "transformation/train_val")
 
     with col_right:
         st.subheader("Sampler (optional)")
         use_sampler = st.checkbox("Enable batch sampler", value=False, key="use_sampler")
         sampler_name = None
-        sampler_path = None
         sampler_text = None
         if use_sampler:
             sampler_name = st.selectbox("Sampler variant", SAMPLERS.names(), key="sampler_name")
-            sampler_path, sampler_text = yaml_field("Sampler", "sampler", "batch_sampler")
+            _, sampler_text = yaml_field("Sampler", "sampler", "batch_sampler")
 
         st.subheader("Early stopper (optional)")
         use_es = st.checkbox("Enable early stopper", value=True, key="use_es")
         es_name = None
-        es_path = None
         es_text = None
         if use_es:
             es_name = st.selectbox("Early stopper variant", EARLY_STOPPERS.names(), key="es_name")
-            es_path, es_text = yaml_field("Early stopper", "es", "early_stopper")
+            _, es_text = yaml_field("Early stopper", "es", "early_stopper")
 
         st.subheader("Trainer")
-        trainer_path, trainer_text = yaml_field("Trainer", "trainer", "trainer")
+        _, trainer_text = yaml_field("Trainer", "trainer", "trainer")
 
         with st.expander("Quick overrides (modify trainer YAML)"):
             override_epochs = st.number_input("num_epochs (0 = keep YAML)", min_value=0, value=0, step=1)
@@ -460,14 +462,14 @@ def render_evaluate_tab() -> None:
     col1, col2 = st.columns(2)
     with col1:
         backbone_name = st.selectbox("Backbone variant", BACKBONES.names(), key="eval_bb")
-        bb_path, bb_text = yaml_field("Backbone", "eval_bb_yaml", "backbone", default_pattern=backbone_name)
+        _, bb_text = yaml_field("Backbone", "eval_bb_yaml", "backbone", default_pattern=backbone_name)
         eval_dataset = st.selectbox("Eval dataset", EVAL_DATASETS.names(), key="eval_ds_name")
-        ds_path, ds_text = yaml_field("Eval dataset", "eval_ds_yaml", "dataset/eval")
+        _, ds_text = yaml_field("Eval dataset", "eval_ds_yaml", "dataset/eval")
     with col2:
         eval_tx = st.selectbox("Eval transformation", sorted(TRANSFORMATIONS.names()), key="eval_tx_name")
-        tx_path, tx_text = yaml_field("Eval transformation", "eval_tx_yaml", "transformation/eval")
+        _, tx_text = yaml_field("Eval transformation", "eval_tx_yaml", "transformation/eval")
         evaluator_name = st.selectbox("Evaluator", EVALUATORS.names(), key="evaluator_name")
-        eval_path, eval_text = yaml_field("Evaluator", "evaluator_yaml", "evaluator")
+        _, eval_text = yaml_field("Evaluator", "evaluator_yaml", "evaluator")
 
     if st.button("Run evaluation", type="primary"):
         eval_run_dir = make_run_dir(RUNS_PARENT / "evals", name=selected_ckpt.stem)
