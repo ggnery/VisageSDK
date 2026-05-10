@@ -188,6 +188,66 @@ class TestLoraTrainableSummary:
 
 
 # =============================================================================
+# modules_to_save (full fine-tune) — escape hatch for the embedding head
+# =============================================================================
+
+
+class TestApplyLoraModulesToSave:
+    def test_listed_module_becomes_fully_trainable(self):
+        """`modules_to_save=["proj"]` must mark every parameter under that
+        module as trainable, on top of the LoRA-only training of `head`.
+        Without that, the user-facing override is silently a no-op."""
+        m = _fresh_model()
+        wrapped = apply_lora(
+            m, rank=4, alpha=8.0,
+            target_modules=["head"],
+            modules_to_save=["proj"],
+        )
+        # Filter to params under `proj` (excluding LoRA-style names).
+        proj_trainable = [
+            (n, p)
+            for n, p in wrapped.named_parameters()
+            if "proj" in n and "lora_" not in n and p.requires_grad
+        ]
+        assert proj_trainable, (
+            "modules_to_save did not unfreeze `proj` — PEFT silently "
+            "ignored the request, so the feature head stays frozen "
+            "(the bug we're guarding against)."
+        )
+
+    def test_default_keeps_non_targeted_modules_frozen(self):
+        """Without modules_to_save, only LoRA params are trainable —
+        sanity check that the feature for this fix is genuinely opt-in
+        and we haven't regressed the default behavior."""
+        wrapped = apply_lora(
+            _fresh_model(), rank=4, alpha=8.0, target_modules=["head"],
+        )
+        proj_trainable = [
+            n for n, p in wrapped.named_parameters()
+            if "proj" in n and "lora_" not in n and p.requires_grad
+        ]
+        assert proj_trainable == []
+
+    def test_modules_to_save_increases_param_count(self):
+        """Adding modules_to_save increases the trainable count by the
+        full size of the listed modules (not just rank * (in+out))."""
+        baseline = apply_lora(
+            _fresh_model(), rank=4, alpha=8.0, target_modules=["head"],
+        )
+        with_save = apply_lora(
+            _fresh_model(), rank=4, alpha=8.0,
+            target_modules=["head"], modules_to_save=["proj"],
+        )
+        n_baseline = sum(p.numel() for p in baseline.parameters() if p.requires_grad)
+        n_with_save = sum(p.numel() for p in with_save.parameters() if p.requires_grad)
+        # `proj` is Linear(8 -> 12) bias=False → 96 weight params unfrozen.
+        # Plus PEFT typically duplicates `modules_to_save` modules into a
+        # separate `modules_to_save.default` copy (so the wrapped delta is
+        # comparable to baseline + ~2 * proj_params).
+        assert n_with_save > n_baseline + 90
+
+
+# =============================================================================
 # Save / load roundtrip
 # =============================================================================
 

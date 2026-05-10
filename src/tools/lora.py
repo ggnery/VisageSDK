@@ -32,6 +32,7 @@ def apply_lora(
     alpha: float,
     target_modules: list[str],
     dropout: float = 0.0,
+    modules_to_save: list[str] | None = None,
 ) -> PeftModel:
     """Wrap `model` with a LoRA adapter and return the PEFT-wrapped model.
 
@@ -46,6 +47,12 @@ def apply_lora(
         target_modules: Module names or fnmatch-style patterns that PEFT
             should wrap. Examples: ["last_linear", "block8.branch1.0.conv"].
         dropout: Dropout applied to the LoRA path. 0 disables.
+        modules_to_save: Optional list of modules PEFT should fully fine-
+            tune (full update of weights, not LoRA-style). Useful for the
+            final embedding projection layers where adapter-only deltas
+            aren't expressive enough to reshape the output space for a
+            new domain (e.g., a face-pretrained feature head adapting to
+            cattle re-id).
 
     Returns:
         A `peft.PeftModel`. Attribute access proxies to the base model, so
@@ -62,6 +69,7 @@ def apply_lora(
         target_modules=list(target_modules),
         lora_dropout=dropout,
         bias="none",
+        modules_to_save=list(modules_to_save) if modules_to_save else None,
     )
     wrapped = get_peft_model(model, config)  # type: ignore[arg-type]
     return cast(PeftModel, wrapped)

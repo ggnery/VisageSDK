@@ -9,6 +9,7 @@ B8 zero-sample guard, etc.).
 from pathlib import Path
 
 import pytest
+import torch
 import yaml
 
 
@@ -404,4 +405,188 @@ class TestLoRAIntegration:
         assert lora_params, "expected LoRA params on the wrapped backbone"
         assert all(id(p) in opt_params for p in lora_params), (
             "LoRA parameters missing from optimizer — _maybe_apply_lora forgot to rebuild it"
+        )
+
+    def test_onnx_export_merges_lora_into_base(self, tiny_train_setup):
+        """When LoRA is enabled, the exported ONNX must NOT contain any
+        lora_A / lora_B initializers — `_maybe_export_onnx` deepcopies +
+        `merge_and_unload`s the PEFT model so the resulting graph is the
+        plain base, with LoRA contributions baked into base weights.
+        Without that, every saved .onnx carries dead PEFT side-paths and
+        is slower at inference."""
+        import onnx
+
+        from tools.trainer_builder import TrainerBuilder
+
+        cfg_dir = Path(tiny_train_setup["_cfg_dir"])
+        _enable_lora(cfg_dir)
+        # Need ONNX export wired on too, otherwise _maybe_export_onnx skips.
+        _enable_onnx_export(cfg_dir)
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        trainer.save_checkpoint(0.0, 0.0, "ckpt.pth")
+
+        onnx_path = Path(tiny_train_setup["_ckpt_dir"]) / "ckpt.onnx"
+        assert onnx_path.exists()
+
+        model = onnx.load(str(onnx_path))
+        leaked = [init.name for init in model.graph.initializer if "lora_" in init.name]
+        assert not leaked, f"LoRA tensors leaked into ONNX initializers: {leaked}"
+        node_op_types = {node.op_type for node in model.graph.node}
+        # Sanity: a non-trivial graph (i.e. the export actually ran).
+        assert "Gemm" in node_op_types or "MatMul" in node_op_types
+
+    def test_resume_preserves_lora_adapter_weights(self, tiny_train_setup, tmp_path):
+        """Resume from a LoRA checkpoint must restore the trained LoRA
+        weights (not reinit fresh adapters). Pre-fix this silently failed:
+        load_checkpoint ran on the bare backbone, the wrapped-source keys
+        like `base_model.model.*.lora_A.*` didn't match, strict=False
+        dropped them, then `_maybe_apply_lora` reinitialized.
+
+        We force LoRA's `lora_B` to a known non-zero value before saving so
+        the post-resume forward differs from a freshly-wrapped LoRA model
+        — that lets us assert state actually transferred."""
+        from peft.peft_model import PeftModel
+
+        from tools.trainer_builder import TrainerBuilder
+
+        cfg_dir = Path(tiny_train_setup["_cfg_dir"])
+        _enable_lora(cfg_dir)
+
+        # First run: build, then poke `lora_B` to a non-zero value and save.
+        env = _build_env(tiny_train_setup)
+        trainer1 = TrainerBuilder(env).build_trainer()
+        assert isinstance(trainer1.backbone, PeftModel)
+        with torch.no_grad():
+            for n, p in trainer1.backbone.named_parameters():
+                if ".lora_B." in n:
+                    p.fill_(0.1)
+        trainer1.save_checkpoint(0.0, 0.0, "ckpt.pth")
+        ckpt_path = Path(tiny_train_setup["_ckpt_dir"]) / "ckpt.pth"
+        assert ckpt_path.exists()
+
+        # Reference forward from the trained model.
+        trainer1.backbone.eval()
+        x = torch.randn(2, 3, 160, 160)
+        with torch.no_grad():
+            expected = trainer1.backbone(x).clone()
+
+        # Second run: point at the saved checkpoint to "resume". Force a
+        # fresh checkpoint dir so we don't collide with the first run.
+        trainer_yaml_path = cfg_dir / "trainer.yaml"
+        data = yaml.safe_load(trainer_yaml_path.read_text())
+        data["checkpoint"]["save"]["dir"] = str(tmp_path / "resume_ckpt")
+        data["checkpoint"]["load"]["path"] = str(ckpt_path)
+        data["checkpoint"]["load"]["backbone"] = True
+        data["checkpoint"]["load"]["loss"] = True
+        trainer_yaml_path.write_text(yaml.safe_dump(data))
+
+        env2 = _build_env(tiny_train_setup)
+        trainer2 = TrainerBuilder(env2).build_trainer()
+        assert isinstance(trainer2.backbone, PeftModel)
+
+        # Sanity: lora_B should be 0.1 (the saved value), not 0.0 (fresh init).
+        b_tensors = [p for n, p in trainer2.backbone.named_parameters() if ".lora_B." in n]
+        assert b_tensors, "expected lora_B tensors after resume"
+        for p in b_tensors:
+            assert torch.allclose(p, torch.full_like(p, 0.1), atol=1e-6), (
+                "LoRA adapter weights were reinitialized on resume — "
+                "the wrapped checkpoint detection failed"
+            )
+
+        trainer2.backbone.eval()
+        with torch.no_grad():
+            actual = trainer2.backbone(x)
+        assert torch.allclose(expected, actual, atol=1e-6)
+
+    def test_periodic_eval_logging_skips_non_scalar_results(self, tiny_train_setup, tmp_path):
+        """Regression: when periodic_eval uses the verification evaluator,
+        results contain `roc_curve` and `score_distributions` (dicts).
+        `_maybe_run_periodic_eval` used to format every value with `:.6f`,
+        crashing with `unsupported format string passed to dict.__format__`
+        and bringing down the entire training mid-run."""
+        from unittest.mock import MagicMock
+
+        from tools.trainer_builder import TrainerBuilder
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+
+        # Stub the periodic evaluator with a verification-style payload.
+        fake_evaluator = MagicMock()
+        fake_evaluator.evaluate.return_value = {
+            "lfw_accuracy_mean": 0.99,
+            "eer": 0.05,
+            "tar@far=1e-03": 0.85,
+            "roc_curve": {"fpr": [0.0, 0.5, 1.0], "tpr": [0.0, 0.95, 1.0]},
+            "score_distributions": {"genuine": [0.1, 0.2], "impostor": [0.7, 0.8]},
+        }
+        trainer.periodic_evaluator = fake_evaluator
+        trainer.epoch = 1
+        # Run via every_n=1 so the trigger condition fires unconditionally.
+        trainer.config._params["periodic_eval"] = {"every_n_epochs": 1}  # type: ignore[attr-defined]
+        trainer.config.periodic_eval = {"every_n_epochs": 1}
+
+        # Should NOT raise — non-scalars must be filtered before the format.
+        out = trainer._maybe_run_periodic_eval()
+        assert out is not None
+        # Full dict (scalars + curves) flows back so history JSON keeps it.
+        assert "roc_curve" in out and "score_distributions" in out
+
+    def test_peek_is_lora_wrapped_classifies_correctly(self, tiny_train_setup, tmp_path):
+        """The wrapped-checkpoint detector must return True for a PEFT-saved
+        .pth and False for a bare-backbone .pth, since picking the wrong
+        order silently breaks loading either way."""
+        from tools.trainer_builder import TrainerBuilder
+        from trainer.trainer import Trainer
+
+        # Bare save first.
+        env = _build_env(tiny_train_setup)
+        trainer_bare = TrainerBuilder(env).build_trainer()
+        trainer_bare.save_checkpoint(0.0, 0.0, "bare.pth")
+        bare_path = Path(tiny_train_setup["_ckpt_dir"]) / "bare.pth"
+
+        # Wrapped save.
+        cfg_dir = Path(tiny_train_setup["_cfg_dir"])
+        _enable_lora(cfg_dir)
+        env2 = _build_env(tiny_train_setup)
+        trainer_lora = TrainerBuilder(env2).build_trainer()
+        trainer_lora.save_checkpoint(0.0, 0.0, "lora.pth")
+        lora_path = Path(tiny_train_setup["_ckpt_dir"]) / "lora.pth"
+
+        assert Trainer._peek_is_lora_wrapped(bare_path) is False
+        assert Trainer._peek_is_lora_wrapped(lora_path) is True
+
+    def test_onnx_export_does_not_mutate_training_state(self, tiny_train_setup):
+        """The deepcopy + merge_and_unload path must leave the live
+        backbone (still being trained) untouched. Otherwise resuming after
+        a checkpoint save would silently lose the LoRA structure."""
+        from peft.peft_model import PeftModel
+
+        from tools.trainer_builder import TrainerBuilder
+
+        cfg_dir = Path(tiny_train_setup["_cfg_dir"])
+        _enable_lora(cfg_dir)
+        _enable_onnx_export(cfg_dir)
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        assert isinstance(trainer.backbone, PeftModel)
+
+        before_lora_param_ids = {
+            id(p) for n, p in trainer.backbone.named_parameters() if "lora_" in n
+        }
+        trainer.save_checkpoint(0.0, 0.0, "ckpt.pth")
+
+        # Same PeftModel instance, same LoRA params, all still trainable.
+        assert isinstance(trainer.backbone, PeftModel)
+        after_lora_param_ids = {
+            id(p) for n, p in trainer.backbone.named_parameters() if "lora_" in n
+        }
+        assert before_lora_param_ids == after_lora_param_ids
+        assert all(
+            p.requires_grad
+            for n, p in trainer.backbone.named_parameters()
+            if "lora_" in n
         )

@@ -153,6 +153,24 @@ class TestOptionalBlocks:
         assert cfg.lora_alpha == 8.0
         assert cfg.lora_dropout == 0.1
         assert cfg.lora_target_modules == ["last_linear", "block8.branch0.conv"]
+        # `modules_to_save` defaults to an empty list (PEFT escape hatch off).
+        assert cfg.lora_modules_to_save == []
+
+    def test_lora_modules_to_save(self, trainer_yaml):
+        cfg = TrainerConfig(
+            str(
+                trainer_yaml(
+                    {
+                        "lora": {
+                            "enabled": True,
+                            "target_modules": ["qkv"],
+                            "modules_to_save": ["feature", "norm"],
+                        }
+                    }
+                )
+            )
+        )
+        assert cfg.lora_modules_to_save == ["feature", "norm"]
 
     def test_lora_enabled_requires_target_modules(self, trainer_yaml):
         # Catching the typo at config-load time prevents a confusing

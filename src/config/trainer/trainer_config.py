@@ -56,6 +56,7 @@ class TrainerConfig(BaseConfig):
     lora_alpha: float
     lora_dropout: float
     lora_target_modules: list[str]
+    lora_modules_to_save: list[str]
 
     periodic_eval: dict[str, Any] | None
 
@@ -133,6 +134,11 @@ class TrainerConfig(BaseConfig):
         self.lora_alpha = float(lora.get("alpha", 16.0))
         self.lora_dropout = float(lora.get("dropout", 0.0))
         self.lora_target_modules = list(lora.get("target_modules", []))
+        # `modules_to_save` is the PEFT escape hatch for modules that
+        # need full fine-tuning (not LoRA). Use it for components like the
+        # final feature head where adapter-only updates aren't expressive
+        # enough to re-shape the embedding space for a new domain.
+        self.lora_modules_to_save = list(lora.get("modules_to_save", []))
         if self.lora_enabled and not self.lora_target_modules:
             raise ValueError("lora.enabled requires at least one entry in lora.target_modules")
 
