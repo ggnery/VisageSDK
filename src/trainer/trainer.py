@@ -151,6 +151,14 @@ class Trainer:
             # the trainable set matches what the run was using when it stopped.
             self._replay_unfreeze_up_to(self.epoch - 1)
 
+        # LoRA wrapping happens AFTER checkpoint load so the source state_dict
+        # (e.g. vggface2.pt) keys still match the bare backbone — once wrapped,
+        # PEFT prefixes everything with `base_model.model.` and direct loads
+        # would silently drop most weights via strict=False. Rebuilding the
+        # optimizer here is required because the original one only saw the
+        # pre-wrap parameters.
+        self._maybe_apply_lora()
+
         self.checkpoint_save_dir = Path(config.checkpoint_save_dir)
         self.dataset_class_name = train_dataset.__class__.__name__.replace("Train", "")
 
@@ -237,6 +245,40 @@ class Trainer:
         if replayed:
             self.logger.info(f"Replayed {replayed} unfreeze events up to epoch {last_completed_epoch}")
             log_freeze_state(self.backbone, self.logger)
+
+    def _maybe_apply_lora(self) -> None:
+        """Wrap the backbone in a PEFT LoRA adapter and rebuild the optimizer.
+
+        PEFT freezes every base parameter and only marks the lora_A / lora_B
+        weights as trainable. The original optimizer was instantiated against
+        the pre-wrap parameters, so we rebuild it here to capture the new
+        LoRA params (and to drop dangling references to the now-frozen base
+        weights). The scheduler is also reattached to the new optimizer.
+        """
+        if not self.config.lora_enabled:
+            return
+        from tools.lora import apply_lora, lora_trainable_summary
+        from tools.optimizer import build_optimizer
+        from tools.scheduler import build_scheduler
+
+        self.backbone = apply_lora(  # type: ignore[assignment]
+            self.backbone,
+            rank=self.config.lora_rank,
+            alpha=self.config.lora_alpha,
+            target_modules=self.config.lora_target_modules,
+            dropout=self.config.lora_dropout,
+        )
+        self.backbone.to(self.device)
+
+        trainable, total = lora_trainable_summary(self.backbone)
+        pct = 100.0 * trainable / total if total else 0.0
+        self.logger.info(
+            f"LoRA applied (rank={self.config.lora_rank}, alpha={self.config.lora_alpha}): "
+            f"{trainable:,}/{total:,} backbone params trainable ({pct:.2f}%)"
+        )
+
+        self.optimizer = build_optimizer(self.backbone, self.loss, self.config)
+        self.scheduler = build_scheduler(self.optimizer, self.config)
 
     def _autocast(self):
         if not self.amp_enabled:

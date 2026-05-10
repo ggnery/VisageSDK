@@ -18,6 +18,7 @@ dependencies = [
     "pandas>=3.0",
     "pillow>=12",
     "onnx>=1.20",
+    "peft>=0.18",
 ]
 
 [dependency-groups]

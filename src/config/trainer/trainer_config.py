@@ -51,6 +51,12 @@ class TrainerConfig(BaseConfig):
     onnx_export_opset: int
     onnx_export_dynamic_batch: bool
 
+    lora_enabled: bool
+    lora_rank: int
+    lora_alpha: float
+    lora_dropout: float
+    lora_target_modules: list[str]
+
     periodic_eval: dict[str, Any] | None
 
     def __init__(self, config_path: str) -> None:
@@ -120,5 +126,14 @@ class TrainerConfig(BaseConfig):
         self.onnx_export_enabled = bool(onnx_export.get("enabled", False))
         self.onnx_export_opset = int(onnx_export.get("opset", 17))
         self.onnx_export_dynamic_batch = bool(onnx_export.get("dynamic_batch", True))
+
+        lora = self._params.get("lora") or {}
+        self.lora_enabled = bool(lora.get("enabled", False))
+        self.lora_rank = int(lora.get("rank", 8))
+        self.lora_alpha = float(lora.get("alpha", 16.0))
+        self.lora_dropout = float(lora.get("dropout", 0.0))
+        self.lora_target_modules = list(lora.get("target_modules", []))
+        if self.lora_enabled and not self.lora_target_modules:
+            raise ValueError("lora.enabled requires at least one entry in lora.target_modules")
 
         self.periodic_eval = self._params.get("periodic_eval")

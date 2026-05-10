@@ -1,0 +1,86 @@
+# LoRA finetune for InceptionResNetV1 cow re-id (or any small dataset
+# adaptation). The base backbone weights stay frozen — only the LoRA
+# adapter matrices on the targeted modules are trained, so the trainable
+# parameter count is tiny (~10k–100k vs 23M).
+#
+# When to pick this over partial_unfreeze_finetune.yaml:
+#   - You want adapter files that are tiny (a few MB) and composable
+#     (one per farm / per data slice).
+#   - The full unfreeze risks overfitting on your dataset.
+#   - You want to stack multiple tasks against one base checkpoint.
+#
+# How target_modules matches: PEFT does endswith-match on the list, so
+# "last_linear" uniquely identifies the final projection in
+# InceptionResNetV1. To target more (e.g. block8 convs) add their fully
+# qualified names — `last_bn`, `last_linear`, `block8.branch0.conv`, etc.
+#
+# The trainer's `freeze` block is intentionally absent: PEFT handles all
+# the freezing, marking only the LoRA params as trainable.
+
+optimizer:
+  type: Adam
+  params:
+    lr: 1.0e-3            # LoRA matrices typically tolerate a higher LR
+    weight_decay: 1.0e-4
+
+lr_schedule:
+  type: StepLR
+  params:
+    step_size: 10
+    gamma: 0.5
+
+dataloader:
+  train:
+    batch_size: 32
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 32
+    shuffle: False
+    num_workers: 2
+
+num_epochs: 30
+device: cuda
+
+checkpoint:
+  save:
+    dir: ./checkpoints/lora_finetune
+    frequency: 5
+  load:
+    path: ./models/base/vggface2_wrapped.pth
+    backbone: True       # Loads BEFORE LoRA wraps, so vggface2 keys still match
+    loss: False          # Reinitialize the cross-entropy / margin head
+    scheduler: False
+    optimizer: False
+
+lora:
+  enabled: true
+  rank: 8                # 4–16 is the sweet spot for fine-tunes this size
+  alpha: 16.0            # Rule of thumb: alpha = 2 * rank
+  dropout: 0.0
+  target_modules:
+    - "last_linear"
+    # Add these to grow the adapter's capacity at the cost of more params:
+    # - "block8.branch0.conv"
+    # - "block8.branch1.0.conv"
+    # - "block8.conv2d"
+
+seed: 42
+deterministic: false
+
+amp:
+  enabled: true
+  dtype: float16
+
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+logging:
+  tensorboard: true
+  log_dir: null
+
+onnx_export:
+  enabled: true
+  opset: 17
+  dynamic_batch: true

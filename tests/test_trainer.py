@@ -320,3 +320,88 @@ class TestOnnxExport:
         env = _build_env(tiny_train_setup)
         trainer = TrainerBuilder(env).build_trainer()
         assert trainer.backbone.input_size == [160, 160]
+
+
+# =============================================================================
+# LoRA / PEFT integration
+# =============================================================================
+
+
+def _enable_lora(cfg_dir: Path, **overrides) -> None:
+    """Patch the trainer YAML in-place to enable LoRA on `last_linear`."""
+    trainer_yaml_path = cfg_dir / "trainer.yaml"
+    data = yaml.safe_load(trainer_yaml_path.read_text())
+    data["lora"] = {
+        "enabled": True,
+        "rank": 4,
+        "alpha": 8.0,
+        "target_modules": ["last_linear"],
+        **overrides,
+    }
+    trainer_yaml_path.write_text(yaml.safe_dump(data))
+
+
+class TestLoRAIntegration:
+    def test_disabled_by_default(self, tiny_train_setup):
+        """No `lora` block → backbone stays a plain BaseBackbone subclass,
+        not a PeftModel. Existing trainer YAMLs keep working unchanged."""
+        from peft.peft_model import PeftModel
+
+        from tools.trainer_builder import TrainerBuilder
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        assert not isinstance(trainer.backbone, PeftModel)
+
+    def test_enabled_wraps_backbone_and_freezes_base(self, tiny_train_setup):
+        """LoRA wraps the backbone in a PeftModel and only the lora_A /
+        lora_B params on `last_linear` end up trainable. The base
+        InceptionResNetV1 weights are frozen by PEFT."""
+        from peft.peft_model import PeftModel
+
+        from tools.trainer_builder import TrainerBuilder
+
+        _enable_lora(Path(tiny_train_setup["_cfg_dir"]))
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        assert isinstance(trainer.backbone, PeftModel)
+
+        trainable = [n for n, p in trainer.backbone.named_parameters() if p.requires_grad]
+        # Every trainable backbone tensor must be a LoRA tensor (PEFT names
+        # them `*.lora_A.<adapter>.weight` etc).
+        assert trainable, "no trainable LoRA params found"
+        assert all("lora_" in n for n in trainable), f"non-LoRA trainable params: {trainable}"
+
+        # Forward should still emit (B, embedding_size) since PeftModel
+        # proxies attribute access to the wrapped backbone.
+        import torch
+
+        trainer.backbone.eval()
+        x = torch.randn(2, 3, 160, 160)
+        with torch.no_grad():
+            emb = trainer.backbone(x)
+        assert emb.shape == (2, 16)  # tiny_train_setup uses embedding_size=16
+
+    def test_optimizer_rebuilt_with_lora_params(self, tiny_train_setup):
+        """The optimizer was created BEFORE LoRA wrapping (in trainer_builder).
+        After Trainer.__init__ wraps the backbone, the optimizer must be
+        rebuilt so the new lora_A / lora_B parameters actually receive
+        gradient updates — otherwise training would silently no-op."""
+        from tools.trainer_builder import TrainerBuilder
+
+        _enable_lora(Path(tiny_train_setup["_cfg_dir"]))
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+
+        opt_params: set[int] = set()
+        for group in trainer.optimizer.param_groups:
+            for p in group["params"]:
+                opt_params.add(id(p))
+
+        lora_params = [p for n, p in trainer.backbone.named_parameters() if "lora_" in n]
+        assert lora_params, "expected LoRA params on the wrapped backbone"
+        assert all(id(p) in opt_params for p in lora_params), (
+            "LoRA parameters missing from optimizer — _maybe_apply_lora forgot to rebuild it"
+        )
