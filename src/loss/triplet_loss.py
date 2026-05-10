@@ -44,8 +44,18 @@ class TripletLoss(BaseLoss):
         triplets, mining_info = self.mine_triplets(embeddings, y_true)  # Online mining
 
         if len(triplets) == 0:
-            # No valid triplets found, return zero loss
-            return torch.tensor(0.0, device=embeddings.device, requires_grad=True), mining_info
+            # No valid triplets in this batch (typically all-singleton class
+            # set). The previous version returned `torch.tensor(0.0,
+            # requires_grad=True)` — a graph-detached LEAF tensor whose
+            # `.backward()` is a silent no-op. That made the trainer
+            # silently stop learning on degenerate batches without any
+            # signal in the loss curve. Tying the zero loss to `embeddings`
+            # via a multiply-by-zero keeps the autograd graph connected so
+            # `.backward()` reaches every model parameter (with zero grad,
+            # so no update — but the graph traversal succeeds and AMP / TB
+            # logging stay consistent).
+            zero_loss = (embeddings * 0.0).sum()
+            return zero_loss, mining_info
 
         # Extract anchor, positive, negative indices
         anchor_indices, positive_indices, negative_indices = zip(*triplets, strict=True)

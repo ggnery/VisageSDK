@@ -1,0 +1,9 @@
+# IdentificationEvaluator layout for the FINAL eval — closed-set held-out
+# protocol: BOTH gallery and probe are unseen during training.
+# gallery -> val split, probe -> test split (same 179 identities).
+# Built by:
+#   uv run python scripts/build_eval_layout.py \
+#       --src ./datasets/ceia_motion_detection_split \
+#       --dst ./datasets/ceia_motion_detection_eval \
+#       --gallery-split val --probe-split test
+eval_dir: "./datasets/ceia_motion_detection_eval"

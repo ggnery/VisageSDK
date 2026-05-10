@@ -1,0 +1,28 @@
+#=======================#=======================#=======================
+# Common backbone keys (required)
+#=======================#=======================#=======================
+input_size: [112, 112]
+embedding_size: 512
+device: cuda
+#=======================#=======================#=======================
+
+#=======================#=======================#=======================
+# LVFace-B specific (matches the published LVFace-B_Glint360K.pt checkpoint).
+# img=112 + patch=9 floor-divides to 12x12 = 144 tokens (trailing 4 px in
+# each dimension are silently cropped by the stride — keep this if you
+# want strict-load to succeed against the official weights).
+#=======================#=======================#=======================
+patch_size: 9
+depth: 24
+num_heads: 8
+mlp_ratio: 4.0
+qkv_bias: false
+
+# Regularization. The published checkpoint was trained with drop_path 0.05;
+# for fine-tuning we typically zero it so the embeddings are deterministic.
+# The MAE-style mask_ratio is intentionally not exposed — masking is only
+# meaningful for masked pretraining, never inference / re-id fine-tuning.
+drop_rate: 0.0
+attn_drop_rate: 0.0
+drop_path_rate: 0.0
+#=======================#=======================#=======================

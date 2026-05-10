@@ -15,13 +15,17 @@ class CenterLoss(BaseLoss):
 
     def __init__(self, loss_config: LossConfig):
         super().__init__(loss_config)
-        self.alpha = loss_config.alpha
-        self.use_bias = loss_config.use_bias
-        self.linear = nn.Linear(self.embedding_size, self.num_classes, bias=loss_config.use_bias)
+        # Use getattr with documented defaults instead of direct attribute
+        # access — `BaseConfig.__getattr__` raises AttributeError for
+        # missing keys, which gives a confusing trace deep in the loss
+        # module instead of a friendly "your YAML is missing X".
+        self.alpha = float(getattr(loss_config, "alpha", 0.5))
+        self.use_bias = bool(getattr(loss_config, "use_bias", True))
+        self.linear = nn.Linear(self.embedding_size, self.num_classes, bias=self.use_bias)
 
         # Add proper initialization
         nn.init.xavier_normal_(self.linear.weight)
-        if loss_config.use_bias:
+        if self.use_bias:
             nn.init.constant_(self.linear.bias, 0)
 
         self.criterion = nn.CrossEntropyLoss()

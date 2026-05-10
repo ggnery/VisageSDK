@@ -1,0 +1,11 @@
+#=======================#=======================#=======================
+# These params are common to all train/val datasets and MUST be present
+#=======================#=======================#=======================
+# Built by `scripts/split_dataset.py --val-frac 0.15 --test-frac 0.15`.
+# Test split is on disk but NOT consumed by the trainer — it's reserved
+# for the final IdentificationEvaluator probe.
+train_dir: "./datasets/ceia_motion_detection_split/train"
+val_dir: "./datasets/ceia_motion_detection_split/val"
+
+num_classes: 179
+#=======================#=======================#=======================

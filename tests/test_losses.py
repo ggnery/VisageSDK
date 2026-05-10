@@ -132,6 +132,28 @@ class TestTripletLoss:
         value, stats = loss(emb, labels)
         assert value.item() == pytest.approx(0.0)
 
+    def test_zero_triplet_loss_is_connected_to_graph(self, loss_config_factory):
+        """Regression: pre-fix `torch.tensor(0.0, requires_grad=True)` was a
+        leaf tensor disconnected from the embeddings, so `.backward()` was a
+        silent no-op and the trainer kept stepping the optimizer with stale
+        gradients. The fix ties the zero loss to `embeddings * 0` so the
+        autograd graph reaches every model parameter. Verify by checking
+        that backward through the zero-triplet path produces grad tensors
+        (all zero is fine — the contract is that grads exist)."""
+        cfg = loss_config_factory({"device": "cpu", "margin": 0.2})
+        loss = TripletLoss(cfg)
+        # Mimic an upstream model parameter so we can check grad propagation.
+        upstream = torch.randn(4, 8, requires_grad=True)
+        emb = upstream * 2.0  # arbitrary trainable transform
+        labels = torch.tensor([0, 1, 2, 3])  # all distinct → no triplets
+        value, _ = loss(emb, labels)
+        assert value.requires_grad, "zero loss must keep the graph connected"
+        value.backward()
+        assert upstream.grad is not None, (
+            "backward() through the zero-triplet branch produced no gradient — "
+            "the loss is detached from the model's parameters."
+        )
+
     def test_active_triplets_le_total(self, loss_config_factory):
         cfg = loss_config_factory({"device": "cpu", "margin": 0.5})
         loss = TripletLoss(cfg)

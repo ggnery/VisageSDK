@@ -122,6 +122,62 @@ class TestOptionalBlocks:
         assert cfg.onnx_export_opset == 14
         assert cfg.onnx_export_dynamic_batch is False
 
+    def test_lora_defaults(self, trainer_yaml):
+        cfg = TrainerConfig(str(trainer_yaml()))
+        # Opt-in: missing block stays disabled and existing trainer YAMLs
+        # without `lora` keep loading.
+        assert cfg.lora_enabled is False
+        assert cfg.lora_rank == 8
+        assert cfg.lora_alpha == 16.0
+        assert cfg.lora_dropout == 0.0
+        assert cfg.lora_target_modules == []
+
+    def test_lora_explicit(self, trainer_yaml):
+        cfg = TrainerConfig(
+            str(
+                trainer_yaml(
+                    {
+                        "lora": {
+                            "enabled": True,
+                            "rank": 4,
+                            "alpha": 8.0,
+                            "dropout": 0.1,
+                            "target_modules": ["last_linear", "block8.branch0.conv"],
+                        }
+                    }
+                )
+            )
+        )
+        assert cfg.lora_enabled is True
+        assert cfg.lora_rank == 4
+        assert cfg.lora_alpha == 8.0
+        assert cfg.lora_dropout == 0.1
+        assert cfg.lora_target_modules == ["last_linear", "block8.branch0.conv"]
+        # `modules_to_save` defaults to an empty list (PEFT escape hatch off).
+        assert cfg.lora_modules_to_save == []
+
+    def test_lora_modules_to_save(self, trainer_yaml):
+        cfg = TrainerConfig(
+            str(
+                trainer_yaml(
+                    {
+                        "lora": {
+                            "enabled": True,
+                            "target_modules": ["qkv"],
+                            "modules_to_save": ["feature", "norm"],
+                        }
+                    }
+                )
+            )
+        )
+        assert cfg.lora_modules_to_save == ["feature", "norm"]
+
+    def test_lora_enabled_requires_target_modules(self, trainer_yaml):
+        # Catching the typo at config-load time prevents a confusing
+        # "no parameters found" error deeper in PEFT.
+        with pytest.raises(ValueError, match="target_modules"):
+            TrainerConfig(str(trainer_yaml({"lora": {"enabled": True}})))
+
 
 class TestFreeze:
     def test_no_freeze_block(self, trainer_yaml):

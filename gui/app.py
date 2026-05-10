@@ -229,6 +229,41 @@ def render_configure_tab() -> None:
     )
 
     if launch_btn:
+        # Refuse to launch if any required YAML editor came back empty —
+        # this used to silently produce zero-byte snapshots and crash
+        # train.py with confusing AttributeErrors deep in the config loader.
+        # Mirrors the same guard already in render_evaluate_tab.
+        empty_required = [
+            label
+            for label, content in (
+                ("backbone", bb_text),
+                ("loss", loss_text),
+                ("dataset", ds_text),
+                ("transformation", tx_text),
+                ("trainer", trainer_text),
+            )
+            if not content.strip()
+        ]
+        if use_sampler and sampler_text is not None and not sampler_text.strip():
+            empty_required.append("sampler")
+        if use_es and es_text is not None and not es_text.strip():
+            empty_required.append("early_stopper")
+        if use_periodic_eval:
+            for label, content in (
+                ("periodic eval_dataset", pe_ds_text),
+                ("periodic eval_transformation", pe_tx_text),
+                ("periodic evaluator", pe_eval_text),
+            ):
+                if content is not None and not content.strip():
+                    empty_required.append(label)
+        if empty_required:
+            st.error(
+                "Empty YAML editor(s): "
+                + ", ".join(empty_required)
+                + ". Restart Streamlit (Ctrl+C and re-run) so the editors reload from disk."
+            )
+            return
+
         run_dir = make_run_dir(RUNS_PARENT / "trains", name=run_name or None)
 
         # Write YAMLs out (with overrides applied to trainer)

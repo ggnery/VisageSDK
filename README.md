@@ -74,16 +74,16 @@ BACKBONE=mobilenetv3
 BACKBONE_CONFIG=./configs/backbone/mobilenetv3.yaml
 
 TRAIN_VAL_DATASET=image_folder
-TRAIN_VAL_DATASET_CONFIG=./configs/dataset/train_val/casia_webface_train_val.yaml
+TRAIN_VAL_DATASET_CONFIG=./configs/dataset/train_val/casia_webface.yaml
 
 TRAIN_TRANSFORMATION=casia_webface_train
 VAL_TRANSFORMATION=casia_webface_val
-TRAIN_VAL_TRANSFORMATION_CONFIG=./configs/transformation/train_val/casia_webface_train_val_transformation.yaml
+TRAIN_VAL_TRANSFORMATION_CONFIG=./configs/transformation/train_val/casia_webface.yaml
 
 LOSS=margin_cosine
 LOSS_CONFIG=./configs/loss/margin_cosine_product.yaml
 
-TRAINER_CONFIG=./configs/trainer/mobilenetv3_trainer.yaml
+TRAINER_CONFIG=./configs/trainer/mobilenetv3_from_scratch.yaml
 
 # Optional
 EARLY_STOPPER=adaptative
@@ -240,9 +240,9 @@ periodic_eval:
   enabled: true
   every_n_epochs: 5
   dataset: lfw_pairs
-  dataset_config: ./configs/dataset/eval/lfw_eval.yaml
+  dataset_config: ./configs/dataset/eval/lfw_pairs.yaml
   transformation: lfw
-  transformation_config: ./configs/transformation/eval/lfw_eval_transformation.yaml
+  transformation_config: ./configs/transformation/eval/lfw.yaml
   evaluator: verification
   evaluator_config: ./configs/evaluator/lfw_verification.yaml
 ```
@@ -270,10 +270,10 @@ BACKBONE_CONFIG=./configs/backbone/inception_resnet_v1.yaml
 CHECKPOINT_PATH=./checkpoints/.../best.pth
 
 EVAL_DATASET=lfw_pairs                  # or identification
-EVAL_DATASET_CONFIG=./configs/dataset/eval/lfw_eval.yaml
+EVAL_DATASET_CONFIG=./configs/dataset/eval/lfw_pairs.yaml
 
 EVAL_TRANSFORMATION=lfw
-EVAL_TRANSFORMATION_CONFIG=./configs/transformation/eval/lfw_eval_transformation.yaml
+EVAL_TRANSFORMATION_CONFIG=./configs/transformation/eval/lfw.yaml
 
 EVALUATOR=verification                  # or identification
 EVALUATOR_CONFIG=./configs/evaluator/lfw_verification.yaml

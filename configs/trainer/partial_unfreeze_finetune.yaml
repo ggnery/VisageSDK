@@ -1,5 +1,5 @@
 # End-to-end fine-tune for margin_cosine on the cow datasets. Differs from
-# ceia_softsystem_finetune.yaml in two critical ways:
+# head_only_finetune.yaml in two critical ways:
 #
 # 1. Backbone is partially UN-frozen (last_linear + last_bn + block8). With
 #    a fully frozen backbone the margin_cosine head has no chance: vggface2
@@ -54,7 +54,7 @@ device: cuda
 
 checkpoint:
   save:
-    dir: ./checkpoints/ceia_margin_cosine_finetune
+    dir: ./checkpoints/partial_unfreeze_finetune
     frequency: 5
   load:
     path: ./models/base/vggface2_wrapped.pth

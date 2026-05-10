@@ -38,7 +38,7 @@ device: cuda
 
 checkpoint:
   save:
-    dir: ./checkpoints/ceia_softsystem_finetune
+    dir: ./checkpoints/head_only_finetune
     frequency: 5
   load:
     path: ./models/base/vggface2_wrapped.pth
