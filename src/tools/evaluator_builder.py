@@ -62,11 +62,36 @@ class EvaluatorBuilder:
         if lora_config:
             from tools.lora import apply_lora
 
+            target_modules = list(lora_config.get("target_modules", []))
+
+            # If the user picks a backbone variant in the GUI that doesn't
+            # contain ANY of the targeted modules, PEFT raises a cryptic
+            # `Target modules X not found in the base model.` deep in its
+            # internals. Detect the obvious mismatch up front so the error
+            # message points at the actual fix (pick the right backbone).
+            backbone_module_names = {name for name, _ in self.backbone.named_modules()}
+            matched = any(
+                any(
+                    name == target or name.endswith(f".{target}")
+                    for target in target_modules
+                )
+                for name in backbone_module_names
+            )
+            if not matched:
+                raise ValueError(
+                    f"Checkpoint at {self.env.checkpoint_path} was saved with "
+                    f"lora_config.target_modules={target_modules}, but the "
+                    f"selected backbone variant '{self.env.backbone}' (class "
+                    f"{type(self.backbone).__name__}) contains no matching "
+                    "modules. Pick the backbone variant the checkpoint was "
+                    "trained on (likely lvface_vit_b vs inception_resnet_v1)."
+                )
+
             self.backbone = apply_lora(
                 self.backbone,
                 rank=lora_config["rank"],
                 alpha=lora_config["alpha"],
-                target_modules=list(lora_config.get("target_modules", [])),
+                target_modules=target_modules,
                 dropout=lora_config.get("dropout", 0.0),
                 modules_to_save=list(lora_config.get("modules_to_save") or []) or None,
             )

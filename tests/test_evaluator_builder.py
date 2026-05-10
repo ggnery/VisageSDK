@@ -127,3 +127,38 @@ class TestEvaluatorBuilder:
         results = evaluator.evaluate()
         assert "lfw_accuracy_mean" in results
         assert "roc_auc" in results
+
+    def test_lora_target_modules_mismatch_raises_friendly_error(
+        self, eval_env_setup, tmp_path
+    ):
+        """Regression: when the GUI user picks the wrong backbone variant
+        for a LoRA checkpoint (e.g., inception_resnet_v1 selected for an
+        LVFace ViT checkpoint), PEFT used to raise a cryptic
+        `Target modules X not found in the base model.` deep in its
+        internals. The fix detects the mismatch up front and tells the
+        user to pick the matching backbone."""
+        from config.backbone.base_backbone_config import BackboneConfig
+        from registry import BACKBONES
+        from tools.evaluator_builder import EvaluatorBuilder
+
+        # Save a checkpoint with lora_config targeting ViT-style modules
+        # (qkv, attn.proj, fc1, fc2) — none of which exist in
+        # InceptionResNetV1.
+        backbone_cfg = BackboneConfig(eval_env_setup["BACKBONE_CONFIG"])
+        backbone = BACKBONES.get("inception_resnet_v1")(backbone_cfg)
+        ckpt = {
+            "backbone_state_dict": backbone.state_dict(),
+            "lora_config": {
+                "rank": 8,
+                "alpha": 16.0,
+                "dropout": 0.0,
+                "target_modules": ["qkv", "attn.proj", "fc1", "fc2"],
+                "modules_to_save": [],
+            },
+        }
+        bad_path = tmp_path / "ckpt_lora_mismatch.pth"
+        torch.save(ckpt, bad_path)
+        eval_env_setup["CHECKPOINT_PATH"] = str(bad_path)
+
+        with pytest.raises(ValueError, match="contains no matching modules"):
+            EvaluatorBuilder(_build_eval_env(eval_env_setup))

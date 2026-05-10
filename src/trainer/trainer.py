@@ -175,6 +175,23 @@ class Trainer:
             self._replay_unfreeze_up_to(self.epoch - 1)
 
         if not src_is_lora_wrapped:
+            # Bare-source + LoRA-enabled: load_checkpoint already loaded the
+            # optimizer/scheduler state into the pre-wrap optimizer above,
+            # but `_maybe_apply_lora` is about to rebuild both, dropping
+            # that state on the floor. Warn so the user isn't surprised
+            # when momentum/Adam variances reset on resume.
+            if (
+                config.lora_enabled
+                and config.checkpoint_load_path is not None
+                and (config.checkpoint_load_optimizer or config.checkpoint_load_scheduler)
+            ):
+                self.logger.warning(
+                    "LoRA is enabled and checkpoint.load.optimizer/scheduler=True, "
+                    "but the source checkpoint is bare (non-LoRA). The optimizer "
+                    "and scheduler states will be reset by the LoRA rebuild. "
+                    "If you intended to resume a LoRA run, point checkpoint.load.path "
+                    "at a LoRA-trained .pth instead."
+                )
             self._maybe_apply_lora()
 
         self.checkpoint_save_dir = Path(config.checkpoint_save_dir)
@@ -578,18 +595,64 @@ class Trainer:
     ):
         checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
 
+        # Each `load_*` flag opts the user into restoring that piece of
+        # state, but the source checkpoint may legitimately lack the key
+        # (e.g., the wrap_*_pretrained.py scripts ship base weights only,
+        # with empty optimizer/scheduler dicts). Use `.get()` and warn
+        # rather than raising — the previous bracket-access pattern crashed
+        # mid-resume with confusing KeyErrors.
         if load_backbone:
-            self.backbone.load_state_dict(checkpoint["backbone_state_dict"], strict=False)
+            backbone_sd = checkpoint.get("backbone_state_dict")
+            if backbone_sd is None:
+                self.logger.warning(
+                    f"checkpoint.load.backbone=True but {checkpoint_path} has no "
+                    "'backbone_state_dict' key; skipping backbone load."
+                )
+            else:
+                result = self.backbone.load_state_dict(backbone_sd, strict=False)
+                if result.missing_keys or result.unexpected_keys:
+                    self.logger.warning(
+                        f"backbone load: {len(result.missing_keys)} missing, "
+                        f"{len(result.unexpected_keys)} unexpected keys"
+                    )
+
         if load_loss:
-            self.loss.load_state_dict(checkpoint["loss_state_dict"], strict=False)
+            loss_sd = checkpoint.get("loss_state_dict")
+            if loss_sd:
+                self.loss.load_state_dict(loss_sd, strict=False)
+            else:
+                self.logger.warning(
+                    f"checkpoint.load.loss=True but {checkpoint_path} has no usable "
+                    "'loss_state_dict'; skipping loss load."
+                )
+
         if load_scheduler:
-            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+            sched_sd = checkpoint.get("scheduler_state_dict")
+            if sched_sd:
+                self.scheduler.load_state_dict(sched_sd)
+            else:
+                self.logger.warning(
+                    f"checkpoint.load.scheduler=True but {checkpoint_path} has no "
+                    "usable 'scheduler_state_dict'; LR schedule resets."
+                )
+
         if load_optimizer:
-            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            opt_sd = checkpoint.get("optimizer_state_dict")
+            if opt_sd:
+                self.optimizer.load_state_dict(opt_sd)
+            else:
+                self.logger.warning(
+                    f"checkpoint.load.optimizer=True but {checkpoint_path} has no "
+                    "usable 'optimizer_state_dict'; momentum/Adam state resets."
+                )
+
         if self.amp_enabled and checkpoint.get("scaler_state_dict") is not None:
             self.scaler.load_state_dict(checkpoint["scaler_state_dict"])
-        self.epoch = checkpoint["epoch"] + 1
-        self.best_val_loss = checkpoint["val_loss"]
+
+        self.epoch = int(checkpoint.get("epoch", 0)) + 1
+        # `val_loss` defaults to +inf so any first-epoch val_loss becomes
+        # the new best — same semantics as a fresh run.
+        self.best_val_loss = float(checkpoint.get("val_loss", float("inf")))
 
         bb_name = self.backbone.__class__.__name__
         self.logger.info(f"Checkpoint {checkpoint_path} for backbone {bb_name} successfully loaded")
@@ -619,5 +682,16 @@ class Trainer:
         if eval_results is not None:
             entry["eval"] = eval_results
         full_history[f"epoch_{self.epoch}"] = entry
+
+        # Defensive serialization: today every periodic-eval payload fits in
+        # plain JSON (floats + lists of floats), but evaluators are extension
+        # points and a future one returning a numpy array or torch.Tensor
+        # would crash json.dump and corrupt the history file. The default
+        # encoder below stringifies any unknown type rather than blowing up.
+        def _default(o):
+            if hasattr(o, "tolist"):
+                return o.tolist()
+            return repr(o)
+
         with open(history_path, "w") as f:
-            json.dump(full_history, f, indent=2)
+            json.dump(full_history, f, indent=2, default=_default)

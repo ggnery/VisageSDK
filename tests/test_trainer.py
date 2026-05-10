@@ -500,6 +500,36 @@ class TestLoRAIntegration:
             actual = trainer2.backbone(x)
         assert torch.allclose(expected, actual, atol=1e-6)
 
+    def test_load_checkpoint_warns_on_missing_keys_instead_of_crashing(self, tiny_train_setup, tmp_path):
+        """Regression: trainer.load_checkpoint used `checkpoint["X"]` direct
+        access. Old/wrapped-pretrained .pths that ship `{}` for optimizer
+        / scheduler state crashed with KeyError mid-resume. The fix swaps
+        to `.get()` + warning."""
+        from tools.trainer_builder import TrainerBuilder
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        trainer.save_checkpoint(0.0, 0.0, "ckpt.pth")
+        ckpt_path = Path(tiny_train_setup["_ckpt_dir"]) / "ckpt.pth"
+
+        # Strip optimizer_state_dict and scheduler_state_dict from the saved
+        # checkpoint to simulate the wrap_*_pretrained.py format (or a
+        # partial save that crashed mid-write).
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        del ckpt["optimizer_state_dict"]
+        del ckpt["scheduler_state_dict"]
+        torch.save(ckpt, ckpt_path)
+
+        # Build a fresh trainer with both load flags True. Pre-fix this
+        # would KeyError out of __init__; post-fix it warns and continues.
+        trainer.load_checkpoint(
+            ckpt_path,
+            load_backbone=True,
+            load_loss=False,
+            load_scheduler=True,   # missing key — must not crash
+            load_optimizer=True,   # missing key — must not crash
+        )
+
     def test_periodic_eval_logging_skips_non_scalar_results(self, tiny_train_setup, tmp_path):
         """Regression: when periodic_eval uses the verification evaluator,
         results contain `roc_curve` and `score_distributions` (dicts).

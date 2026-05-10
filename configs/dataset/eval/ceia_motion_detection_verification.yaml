@@ -1,0 +1,37 @@
+# Verification eval (TAR@FAR / ROC-AUC / EER / LFW-style accuracy) for the
+# motion_detection dataset. Built from the held-out test split.
+#
+# ABSOLUTE-CEILING protocol: every unique positive pair AND every unique
+# cross-class image pair from the test split. Statistically you cannot do
+# better than this on a fixed test set without collecting more images.
+#
+# Built by:
+#   uv run python scripts/build_verification_pairs.py \
+#       --src ./datasets/ceia_motion_detection_split/test \
+#       --dst ./datasets/ceia_motion_detection_pairs \
+#       --n-folds 10 --exhaustive-negatives
+#
+# Header is the 3-token asymmetric form `<n_folds> <n_same> <n_diff>` that
+# LFWPairsDataset parses transparently. Totals:
+#   29,085 possible positives (all C(k,2) within each class)
+#       → 29,080 used (5 dropped to keep folds balanced)
+#   3,687,816 possible negatives (every cross-class image pair)
+#       → 3,687,810 used (6 dropped for fold balance)
+#   Grand total: 3,716,890 pairs
+#
+# TAR@FAR resolution:
+#   - 1e-3 → ~3,700 negs at threshold (extremely clean)
+#   - 1e-4 → ~370 (very clean)
+#   - 1e-5 → ~37 (clean)
+#   - 1e-6 → ~3.7 (apertado — limit of what 2727 test images can give)
+#
+# Caveats:
+#   - Raw `lfw_accuracy` is class-imbalanced (chuting "different" sempre
+#     dá ~99.2% acc). Trust EER, TAR@FAR, ROC-AUC instead.
+#   - Verification eval takes ~10-12 minutes on this dataset (4M pairs ×
+#     400 thresholds in the ROC sweep). Identification eval unaffected.
+eval_dir: "./datasets/ceia_motion_detection_pairs"
+pairs_path: "./datasets/ceia_motion_detection_pairs/pairs.txt"
+
+# (Comment block above describes the absolute-ceiling protocol now in use:
+#  29,080 unique positives + 3,687,810 unique negatives = 3,716,890 pairs.)
