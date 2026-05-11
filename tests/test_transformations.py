@@ -1,6 +1,5 @@
 """Tests for transformation YAML parsing and defensive behavior."""
 
-import pytest
 import yaml
 
 from config.transformation.base_transformation_config import TransformationConfig

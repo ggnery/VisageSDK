@@ -30,7 +30,15 @@ class CenterLoss(BaseLoss):
 
         self.criterion = nn.CrossEntropyLoss()
 
-        self.centers = nn.Parameter(torch.randn(self.num_classes, self.embedding_size))
+        # Construct on `self.device` directly. `BaseLoss.__init__` already
+        # ran `self.to(self.device)` before this assignment, so a plain
+        # `torch.randn(...)` would register `self.centers` on the CPU.
+        # The trainer happens to call `.to(device)` a second time after
+        # building, but isolating the loss (tests, eval scripts) without
+        # that extra call would crash here with a device mismatch.
+        self.centers = nn.Parameter(
+            torch.randn(self.num_classes, self.embedding_size, device=self.device)
+        )
 
     @override
     def forward(self, embeddings: torch.Tensor, y_true: torch.Tensor) -> tuple[torch.Tensor, dict]:

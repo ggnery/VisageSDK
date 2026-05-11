@@ -88,7 +88,11 @@ class TrainerConfig(BaseConfig):
         save = self._params["checkpoint"]["save"]
         load = self._params["checkpoint"]["load"]
 
-        self.checkpoint_save_frequency = save["frequency"]
+        # Coerce non-positive `frequency` (typo `0`, accidental negative)
+        # up to 1 — without this, `epoch % frequency` in the train loop
+        # crashes mid-run with ZeroDivisionError.
+        freq = int(save["frequency"])
+        self.checkpoint_save_frequency = max(freq, 1)
         self.checkpoint_save_dir = save["dir"]
 
         self.checkpoint_load_path = load["path"]

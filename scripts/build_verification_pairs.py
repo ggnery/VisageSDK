@@ -236,7 +236,10 @@ def build(
     print(f"  classes        : {len(class_indices)} ({len(classes_with_pos)} with >=2 imgs)")
     print(f"  image symlinks : {n_imgs}")
     print(f"  pairs file     : {pairs_path}")
-    print(f"  pairs total    : {n_pairs} ({n_folds} folds × {n_pairs_per_fold} same + {n_pairs_per_fold} diff)")
+    print(
+        f"  pairs total    : {n_pairs} "
+        f"({n_folds} folds × {n_pairs_per_fold} same + {n_pairs_per_fold} diff)"
+    )
 
 
 def parse_args() -> argparse.Namespace:

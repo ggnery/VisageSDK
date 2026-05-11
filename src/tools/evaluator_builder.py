@@ -97,11 +97,9 @@ class EvaluatorBuilder:
             )
             self.backbone.to(device)
 
-        if "backbone_state_dict" in ckpt:
-            sd_to_load = ckpt["backbone_state_dict"]
-        else:
-            # raw state dict
-            sd_to_load = ckpt
+        # `backbone_state_dict` key present → framework-wrapped checkpoint;
+        # absent → raw state_dict written directly by torch.save.
+        sd_to_load = ckpt.get("backbone_state_dict", ckpt)
         # Catch the silent-drop trap: a checkpoint saved from a PEFT-wrapped
         # backbone has keys like `base_model.model.*.weight`. Without
         # `lora_config` metadata (i.e., before scripts/backfill_lora_config.py

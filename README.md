@@ -272,7 +272,7 @@ CHECKPOINT_PATH=./checkpoints/.../best.pth
 EVAL_DATASET=lfw_pairs                  # or identification
 EVAL_DATASET_CONFIG=./configs/dataset/eval/lfw_pairs.yaml
 
-EVAL_TRANSFORMATION=lfw
+EVAL_TRANSFORMATION=lfw_eval
 EVAL_TRANSFORMATION_CONFIG=./configs/transformation/eval/lfw.yaml
 
 EVALUATOR=verification                  # or identification
@@ -293,7 +293,7 @@ Reads the standard LFW `pairs.txt` format (`<n_folds> <n_pairs_per_fold>` header
 - `lfw_threshold_mean` — average threshold picked across folds
 - `best_threshold_global` / `best_accuracy_global` — single threshold over the whole set
 - `roc_auc`, `eer` (+ threshold)
-- `tar@far=1e-3`, `tar@far=1e-4`, `tar@far=1e-5`, `tar@far=1e-6` (`far_targets` configurable per evaluator YAML)
+- `tar@far=1e-03`, `tar@far=1e-04`, `tar@far=1e-05`, `tar@far=1e-06` (`far_targets` configurable per evaluator YAML)
 
 ### Identification metrics (`evaluator: identification`, dataset: `identification`)
 

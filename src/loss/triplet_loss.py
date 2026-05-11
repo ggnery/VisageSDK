@@ -193,10 +193,9 @@ class TripletLoss(BaseLoss):
             # Randomly select one semi-hard negative
             return int(semi_hard_candidates[torch.randint(0, len(semi_hard_candidates), (1,))].item())
 
-        # If no semi-hard negatives, fall back to hardest negative
-        # (closest negative that's still different identity)
-        if len(candidate_indices) > 0:
-            hardest_idx = torch.argmin(candidate_distances)
-            return int(candidate_indices[hardest_idx].item())
-
-        return None
+        # No semi-hard negatives: fall back to the hardest (closest)
+        # negative still in a different identity. `candidate_indices`
+        # is guaranteed non-empty here — the early return at the top
+        # of the function already handled the empty case.
+        hardest_idx = torch.argmin(candidate_distances)
+        return int(candidate_indices[hardest_idx].item())

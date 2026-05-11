@@ -37,11 +37,13 @@ class FacenetBatchSampler(BaseBatchSampler):
         # When the trainer's seed is propagated into this config (the
         # builder injects `trainer_config.seed` here if the YAML doesn't
         # already set `seed`), reproducibility is bit-exact across runs.
-        # Without a seed, we still create a per-instance Random so the
-        # sampler's stream stays isolated from later consumers of the
-        # global random state.
+        # Without a seed, `random.Random()` auto-seeds from os.urandom
+        # so the stream is isolated from the global RNG state without
+        # consuming from it (the previous `random.Random(random.random())`
+        # both consumed from the global stream AND made the seed
+        # dependent on it, defeating the isolation goal).
         seed = getattr(config, "seed", None)
-        self._rng = random.Random(int(seed)) if seed is not None else random.Random(random.random())
+        self._rng = random.Random(int(seed)) if seed is not None else random.Random()
 
     @override
     def __iter__(self):

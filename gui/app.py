@@ -12,14 +12,10 @@ from pathlib import Path
 
 import streamlit as st
 import yaml
-
-# `gui/` is intentionally NOT installed as a package (only src/* is — see
-# pyproject.toml). When Streamlit runs the script it adds the script's own
-# directory (gui/) to sys.path, so `run_manager` resolves as a flat module.
-from run_manager import (  # noqa: I001
+from run_manager import (
     RunHandle,
-    find_event_files,
     find_eval_results_json,
+    find_event_files,
     launch_evaluation,
     launch_training,
     list_checkpoints,
@@ -32,6 +28,11 @@ from run_manager import (  # noqa: I001
     write_yaml,
 )
 
+# `gui/` is intentionally NOT installed as a package (only src/* is — see
+# pyproject.toml). When Streamlit runs the script it adds the script's own
+# directory (gui/) to sys.path, so `run_manager` resolves as a flat module
+# alongside the installed `src/` packages (e.g. `registry`). Isort
+# can't tell them apart from regular third-party imports.
 from registry import (
     BACKBONES,
     DATASETS,
@@ -706,8 +707,8 @@ def _plot_roc_curve(
     Log-x highlights the low-FAR operating regime that matters for
     biometric thresholds; the linear view is for at-a-glance shape and
     AUC. The two share data so they always agree."""
-    import numpy as np
     import matplotlib.pyplot as plt
+    import numpy as np
 
     fpr_arr = np.asarray(fpr, dtype=float)
     tpr_arr = np.asarray(tpr, dtype=float)
@@ -791,7 +792,10 @@ def _plot_score_distributions(
         # when they fall close together (typical for tight ROC operating points).
         styles = [("--", "C0"), (":", "C4"), ("-.", "C5")]
         for (label, value), (linestyle, color) in zip(threshold_lines, styles, strict=False):
-            ax.axvline(value, linestyle=linestyle, color=color, linewidth=1.5, label=f"{label} thr = {value:.3f}")
+            ax.axvline(
+                value, linestyle=linestyle, color=color, linewidth=1.5,
+                label=f"{label} thr = {value:.3f}",
+            )
 
     ax.set_xlabel(f"{distance_kind.capitalize()} distance — lower = more similar")
     ax.set_ylabel("Pair count")
@@ -802,8 +806,10 @@ def _plot_score_distributions(
     plt.close(fig)
 
     st.caption(
-        f"Genuine: median {np.median(g):.3f}, IQR [{np.percentile(g, 25):.3f}, {np.percentile(g, 75):.3f}]"
-        f"  ·  Impostor: median {np.median(i):.3f}, IQR [{np.percentile(i, 25):.3f}, {np.percentile(i, 75):.3f}]"
+        f"Genuine: median {np.median(g):.3f}, "
+        f"IQR [{np.percentile(g, 25):.3f}, {np.percentile(g, 75):.3f}]"
+        f"  ·  Impostor: median {np.median(i):.3f}, "
+        f"IQR [{np.percentile(i, 25):.3f}, {np.percentile(i, 75):.3f}]"
     )
 
 
