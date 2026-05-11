@@ -1,9 +1,4 @@
-"""Determinism helpers.
-
-Seeding fixes torch (CPU+CUDA), numpy, and Python's random module. When
-`deterministic=True` is requested, cuDNN is also forced into deterministic
-mode at the cost of some throughput.
-"""
+"""Determinism helpers: seed torch/numpy/random, optionally force cuDNN deterministic mode."""
 
 import logging
 import os

@@ -16,11 +16,5 @@ class BaseTransformation(ABC):
 
     @abstractmethod
     def build_transformation(self, transformation_config: TransformationConfig) -> list:
-        """Build the transformation pipeline applied AFTER the implicit Resize.
-
-        Args:
-            transformation_config: config object exposing YAML keys as attrs.
-        Returns:
-            list of torchvision transforms appended after the resize.
-        """
+        """Return torchvision transforms to apply after the implicit Resize."""
         ...

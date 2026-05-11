@@ -9,12 +9,5 @@ class BaseEarlyStopper(ABC):
 
     @abstractmethod
     def early_stop(self, val_loss: float) -> bool:
-        """Override to implement custom early stopping logic.
-
-        Args:
-            val_loss: current validation loss
-
-        Returns:
-            True if training should stop, False otherwise.
-        """
+        """Return True iff training should stop."""
         raise NotImplementedError()

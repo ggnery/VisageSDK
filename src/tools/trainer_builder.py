@@ -84,12 +84,8 @@ class TrainerBuilder:
         self.trainer_config = TrainerConfig(self.env.trainer_config)
         self.config_str += self.trainer_config.get_config_string()
 
-        # Fail fast on device mismatch across YAMLs: the trainer moves
-        # batches to `trainer_config.device`, but the backbone and loss are
-        # built on their own YAML's `device`. A mismatch (e.g. backbone on
-        # cuda, trainer on cpu) silently produces a runtime device-mismatch
-        # error deep in the forward pass; explicit validation up front gives
-        # the user a fixable error pointing at the YAMLs.
+        # Fail fast on device mismatch across YAMLs — otherwise the runtime
+        # error happens deep in the forward pass and is hard to trace.
         bb_device = str(self.backbone_config.device)
         loss_device = str(self.loss_config.device)
         trainer_device = str(self.trainer_config.device)
@@ -128,10 +124,8 @@ class TrainerBuilder:
 
         self.sampler = None
         if self.sampler_config is not None and self.env.sampler:
-            # Propagate the trainer's seed into the sampler config (the
-            # YAML can still override it). This wires the sampler's
-            # per-instance RNG to the global determinism story without
-            # making every sampler re-discover the trainer config.
+            # Propagate trainer seed into the sampler so its RNG joins the global
+            # determinism story (YAML still wins if it sets `seed`).
             if (
                 self.trainer_config.seed is not None
                 and self.sampler_config._params.get("seed") is None

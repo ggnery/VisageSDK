@@ -65,18 +65,12 @@ class Trainer:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
 
-        # NOTE: set_seed is called in TrainerBuilder before model instantiation;
-        # by the time we get here, weight init is already deterministic.
-
         self.device = torch.device(config.device)
         self.config = config
         self.early_stopper = early_stopper
         self.periodic_evaluator = periodic_evaluator
 
-        # Two independent generators so train and val random states don't
-        # consume from each other (otherwise val shuffling depends on how
-        # many train batches were drawn, which makes per-epoch behaviour
-        # harder to reason about).
+        # Independent generators so val shuffling doesn't consume from train's RNG state.
         train_gen = make_dataloader_generator(config.seed)
         val_gen = make_dataloader_generator(config.seed + 1 if config.seed is not None else None)
         worker_init = seed_worker if config.seed is not None else None
@@ -129,11 +123,8 @@ class Trainer:
         if config.amp_enabled and self.device.type != "cuda":
             self.logger.info("AMP requested but device is not CUDA — disabling AMP.")
         self.amp_dtype = _DTYPE_MAP.get(config.amp_dtype.lower(), torch.float16)
-        # Only instantiate the GradScaler when AMP+fp16 is actually active.
-        # Constructing `torch.amp.GradScaler("cuda", enabled=False)` on a
-        # CUDA-less host still emits a "GradScaler is enabled, but cuda is
-        # not available" warning; gating the construction keeps CPU-only
-        # runs (tests, dev boxes) silent.
+        # GradScaler only matters for fp16; constructing it on a CUDA-less host
+        # would emit a noisy warning even with enabled=False.
         self.scaler: torch.amp.GradScaler | None = None
         if self.amp_enabled and self.amp_dtype == torch.float16:
             self.scaler = torch.amp.GradScaler("cuda")
@@ -143,19 +134,9 @@ class Trainer:
 
         self.writer = self._build_tensorboard_writer()
 
-        # The order of `load_checkpoint` vs `_maybe_apply_lora` depends on
-        # whether the source checkpoint was saved from a PEFT-wrapped backbone:
-        #
-        # - Bare-source (vggface2.pt, LVFace-B_Glint360K_wrapped.pth): keys
-        #   like `last_linear.weight` only match the BARE backbone, so we
-        #   must load FIRST and wrap second.
-        # - Wrapped-source (resuming a LoRA run): keys are
-        #   `base_model.model.last_linear.base_layer.weight` etc. and only
-        #   match a PEFT-wrapped backbone, so we wrap FIRST and load second.
-        #
-        # Picking the wrong order here doesn't crash — `strict=False` would
-        # silently drop every key — so we sniff the source state_dict up
-        # front and branch accordingly.
+        # LoRA wrap order matters: PEFT-saved checkpoints have `base_model.model.*`
+        # keys (need wrap-then-load); bare checkpoints have raw keys (need
+        # load-then-wrap). Sniff the source state_dict to pick the right order.
         src_is_lora_wrapped = (
             config.checkpoint_load_path is not None
             and config.checkpoint_load_backbone
@@ -173,18 +154,11 @@ class Trainer:
                 config.checkpoint_load_scheduler,
                 config.checkpoint_load_optimizer,
             )
-            # `requires_grad` is not part of state_dict, so the freeze state at this
-            # point is whatever the builder set up before training started. Replay
-            # unfreeze events that happened on or before the checkpoint epoch so
-            # the trainable set matches what the run was using when it stopped.
+            # `requires_grad` is not persisted in state_dict; replay every
+            # unfreeze event up to the resume epoch.
             self._replay_unfreeze_up_to(self.epoch - 1)
 
         if not src_is_lora_wrapped:
-            # Bare-source + LoRA-enabled: load_checkpoint already loaded the
-            # optimizer/scheduler state into the pre-wrap optimizer above,
-            # but `_maybe_apply_lora` is about to rebuild both, dropping
-            # that state on the floor. Warn so the user isn't surprised
-            # when momentum/Adam variances reset on resume.
             if (
                 config.lora_enabled
                 and config.checkpoint_load_path is not None
@@ -192,10 +166,8 @@ class Trainer:
             ):
                 self.logger.warning(
                     "LoRA is enabled and checkpoint.load.optimizer/scheduler=True, "
-                    "but the source checkpoint is bare (non-LoRA). The optimizer "
-                    "and scheduler states will be reset by the LoRA rebuild. "
-                    "If you intended to resume a LoRA run, point checkpoint.load.path "
-                    "at a LoRA-trained .pth instead."
+                    "but the source checkpoint is bare (non-LoRA). Optimizer and "
+                    "scheduler states will be reset by the LoRA rebuild."
                 )
             self._maybe_apply_lora()
 
@@ -236,14 +208,8 @@ class Trainer:
             self._tb_log_epoch(train_loss, val_loss, current_lr, train_stats, val_stats)
             eval_results = self._maybe_run_periodic_eval()
 
-            # Step the scheduler BEFORE save_checkpoint so the saved
-            # `scheduler_state_dict` + `optimizer_state_dict` reflect the
-            # "ready for next epoch" state. Without this, resuming a run
-            # silently trains epoch N+1 with the LR that was used for
-            # epoch N — the saved state lagged the schedule by one step
-            # because step() was called after save(). `current_lr` above
-            # already captures the LR used during *this* epoch's training
-            # so the TensorBoard log stays correct.
+            # Step scheduler BEFORE save_checkpoint so the saved state reflects
+            # the "ready for next epoch" LR (resume keeps the schedule consistent).
             if isinstance(self.scheduler, ReduceLROnPlateau):
                 self.scheduler.step(val_loss)
             else:
@@ -272,12 +238,8 @@ class Trainer:
             return
         patterns = self.config.unfreeze_at_epoch[epoch]
         if not patterns:
-            # Distinguish "no schedule for this epoch" (silent) from
-            # "schedule set but empty pattern list" (likely YAML typo —
-            # `3: []` instead of `3: ["features.*"]`).
             self.logger.warning(
-                f"Epoch {epoch}: unfreeze_at_epoch has an empty pattern list — "
-                "nothing to unfreeze. Check your YAML."
+                f"Epoch {epoch}: unfreeze_at_epoch has an empty pattern list — likely a YAML typo."
             )
             return
         unfrozen = unfreeze_by_patterns(self.backbone, patterns)
@@ -285,19 +247,12 @@ class Trainer:
             self.logger.info(f"Epoch {epoch}: unfroze {len(unfrozen)} params matching {patterns}")
             log_freeze_state(self.backbone, self.logger)
         else:
-            # Patterns set but matched nothing — likely a typo or a name
-            # change after wrap (e.g. LoRA prefixing). Surface it.
             self.logger.warning(
                 f"Epoch {epoch}: unfreeze patterns {patterns} matched no parameters."
             )
 
     def _replay_unfreeze_up_to(self, last_completed_epoch: int) -> None:
-        """Re-apply every unfreeze event scheduled at epoch <= last_completed_epoch.
-
-        Used after `load_checkpoint` since `requires_grad` is not persisted in
-        state_dict; without this, resuming a run wipes the progressive
-        unfreezes that happened before the checkpoint was saved.
-        """
+        """Re-apply every unfreeze event scheduled at epoch <= last_completed_epoch."""
         if last_completed_epoch < 1:
             return
         replayed = 0
@@ -311,28 +266,13 @@ class Trainer:
 
     @staticmethod
     def _peek_is_lora_wrapped(path: Path) -> bool:
-        """Return True if `path` was saved from a PEFT-wrapped backbone.
-
-        Detection is purely structural: PEFT prefixes every wrapped
-        parameter with `base_model.model.`, so a single matching key is
-        enough to know we should apply LoRA before loading.
-
-        Reading the file twice (here and in `load_checkpoint`) is wasteful
-        but cheap thanks to the OS page cache — for a 460 MB checkpoint
-        the second read is sub-second after the first warmed the cache."""
+        """Return True if `path` was saved from a PEFT-wrapped backbone (key prefix sniff)."""
         ckpt = torch.load(path, map_location="cpu", weights_only=False)
         sd = ckpt.get("backbone_state_dict", {}) if isinstance(ckpt, dict) else {}
         return any(k.startswith("base_model.model.") for k in sd)
 
     def _maybe_apply_lora(self) -> None:
-        """Wrap the backbone in a PEFT LoRA adapter and rebuild the optimizer.
-
-        PEFT freezes every base parameter and only marks the lora_A / lora_B
-        weights as trainable. The original optimizer was instantiated against
-        the pre-wrap parameters, so we rebuild it here to capture the new
-        LoRA params (and to drop dangling references to the now-frozen base
-        weights). The scheduler is also reattached to the new optimizer.
-        """
+        """Wrap the backbone in a PEFT LoRA adapter and rebuild optimizer + scheduler."""
         if not self.config.lora_enabled:
             return
         from tools.lora import apply_lora, lora_trainable_summary
@@ -365,13 +305,10 @@ class Trainer:
         return torch.amp.autocast(device_type="cuda", dtype=self.amp_dtype)
 
     def _step(self, use_scaler: bool) -> None:
-        """Optimizer step with optional AMP scaler and gradient clipping.
+        """Optimizer step with optional AMP scaler + gradient clipping.
 
-        With AMP fp16: must `unscale_` before clipping so the clip threshold
-        applies to true (post-unscale) gradient magnitudes.
-
-        `use_scaler` is True only when `self.scaler is not None`; the
-        `assert` keeps type-checkers happy on the unscale/step calls below.
+        With fp16 AMP, `unscale_` is called before clipping so the threshold
+        applies to post-unscale gradient magnitudes.
         """
         if self.grad_clip_max_norm is not None:
             if use_scaler:
@@ -420,9 +357,7 @@ class Trainer:
             total_loss += loss.item() * batch_size
             total_samples += batch_size
 
-            # Weight stats by batch_size so the epoch summary matches the
-            # weighted-average loss exactly (otherwise a partial last batch
-            # gets the same weight as a full one).
+            # Weight stats by batch_size so a partial last batch doesn't inflate the average.
             for k, v in batch_stats.items():
                 if isinstance(v, (int, float)):
                     running_stats[k] = running_stats.get(k, 0.0) + float(v) * batch_size
@@ -475,20 +410,14 @@ class Trainer:
         if self.periodic_evaluator is None:
             return None
         every_n = (self.config.periodic_eval or {}).get("every_n_epochs", 1)
-        # Guard against the `every_n_epochs: 0` YAML mistake, which would
-        # crash the modulo below with ZeroDivisionError mid-training.
-        # Treat 0 as "every epoch" (the most useful interpretation).
+        # Guard against `every_n_epochs: 0` YAML typo (would ZeroDivisionError below).
         if not every_n or every_n <= 0:
             every_n = 1
         if self.epoch % every_n != 0 and self.epoch != self.num_epochs:
             return None
         self.logger.info(f"Running periodic eval at epoch {self.epoch}")
         results = self.periodic_evaluator.evaluate()
-        # The verification evaluator emits non-scalar payloads (`roc_curve`,
-        # `score_distributions`) alongside the headline metrics; only the
-        # scalars are loggable / TB-writable. Non-scalars still flow back to
-        # `save_stats` via the returned dict so the history JSON keeps the
-        # full picture for the GUI's Monitor Eval panel.
+        # Only scalars are TB-writable; non-scalars flow through to `save_stats`.
         for k, v in results.items():
             if not isinstance(v, (int, float)):
                 continue
@@ -520,12 +449,8 @@ class Trainer:
             "epoch": self.epoch,
             "train_loss": train_loss,
             "val_loss": val_loss,
-            # Persist the running best so resuming from a NON-best
-            # checkpoint (e.g. epoch_15.pth saved by frequency) doesn't
-            # wipe out the actual best (e.g. lower val_loss at epoch 10).
-            # Without this, `load_checkpoint` set best_val_loss to
-            # `val_loss`, and any subsequent val_loss < that resume-point
-            # value was wrongly flagged as a new "best".
+            # Persist running best so resuming from a non-best frequency-saved
+            # checkpoint doesn't wipe out the actual best.
             "best_val_loss": self.best_val_loss,
             "backbone_state_dict": self.backbone.state_dict(),
             "loss_state_dict": self.loss.state_dict(),
@@ -533,11 +458,8 @@ class Trainer:
             "scheduler_state_dict": self.scheduler.state_dict(),
             "scaler_state_dict": self.scaler.state_dict() if self.scaler is not None else None,
         }
-        # When PEFT wraps the backbone, the saved state_dict gains
-        # `base_model.model.*` prefixes that no bare backbone can match.
-        # The eval flow used to silently drop every key via strict=False
-        # and run on the un-trained init; persisting the LoRA hyperparams
-        # alongside lets EvaluatorBuilder rebuild the wrap before load.
+        # Persist LoRA hyperparams so EvaluatorBuilder can rebuild the PEFT
+        # wrap before loading the prefixed state_dict.
         if self.config.lora_enabled:
             checkpoint["lora_config"] = {
                 "rank": self.config.lora_rank,
@@ -553,18 +475,10 @@ class Trainer:
         self._maybe_export_onnx(path)
 
     def _maybe_export_onnx(self, ckpt_path: Path) -> None:
-        """Export the backbone alongside the .pth checkpoint for portability.
+        """Export the backbone-only (no loss head) ONNX alongside the .pth.
 
-        Backbone-only by design: the loss head (`loss.linear`) is specific to
-        this run's class set and is rarely useful at inference for re-id
-        deployments — downstream consumers want 512-d embeddings to feed
-        cosine similarity / FAISS / etc.
-
-        For LoRA-wrapped backbones we deepcopy and call PEFT's
-        `merge_and_unload()` first so the exported ONNX has the LoRA
-        contribution baked into each base weight tensor — no `lora_A` /
-        `lora_B` ops in the graph, no inference-time overhead, no extra
-        runtime dependency on PEFT for downstream consumers.
+        For LoRA-wrapped backbones, deepcopies and merges adapters into the
+        base weights so the exported graph has no `lora_A`/`lora_B` ops.
         """
         if not self.config.onnx_export_enabled:
             return
@@ -580,10 +494,7 @@ class Trainer:
         )
         export_model.eval()
         try:
-            # `dynamo=False` keeps the legacy TorchScript-based exporter so we
-            # don't pull in `onnxscript` as a hard dependency. Switch to True
-            # (and add onnxscript to pyproject.toml) once the dynamo path is
-            # the project default.
+            # `dynamo=False` avoids pulling in `onnxscript` as a hard dependency.
             torch.onnx.export(
                 export_model,
                 (dummy,),
@@ -600,17 +511,7 @@ class Trainer:
             self.logger.warning(f"ONNX export failed for {onnx_path}: {e}")
 
     def _merged_backbone_for_export(self) -> BaseBackbone:
-        """Return a backbone module suitable for ONNX export.
-
-        For PEFT-wrapped backbones, returns a deepcopy whose LoRA layers
-        have been merged into the base weights and unloaded. The deepcopy
-        guarantees the live training state is untouched. For non-LoRA
-        backbones, returns `self.backbone` directly (no copy needed).
-
-        Annotated as `BaseBackbone` so callers retain access to
-        `input_size` etc.; the runtime guarantee holds because either we
-        return self.backbone (already a BaseBackbone) or we unwrap a
-        PEFT-wrapped BaseBackbone subclass."""
+        """Return a backbone with any LoRA adapters merged in (deepcopied) for ONNX export."""
         try:
             from peft.peft_model import PeftModel
         except ImportError:
@@ -620,14 +521,10 @@ class Trainer:
         import copy
         from typing import cast
 
-        # `Trainer.backbone` is annotated `BaseBackbone` even though it
-        # holds a `PeftModel` after `_maybe_apply_lora` (the assignment uses
-        # `# type: ignore[assignment]`). Pyright therefore can't narrow
-        # via isinstance; cast manually so `merge_and_unload` resolves.
         peft_model = cast("PeftModel", self.backbone)
         copied = copy.deepcopy(peft_model)
-        # PEFT's `merge_and_unload` is mis-annotated in the installed stub;
-        # at runtime it returns the unwrapped base nn.Module.
+        # PEFT's `merge_and_unload` is mis-annotated in the stub but returns
+        # the unwrapped base nn.Module at runtime.
         merged = copied.merge_and_unload()  # type: ignore[reportCallIssue]
         return cast("BaseBackbone", merged)
 
@@ -641,12 +538,8 @@ class Trainer:
     ):
         checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
 
-        # Each `load_*` flag opts the user into restoring that piece of
-        # state, but the source checkpoint may legitimately lack the key
-        # (e.g., the wrap_*_pretrained.py scripts ship base weights only,
-        # with empty optimizer/scheduler dicts). Use `.get()` and warn
-        # rather than raising — the previous bracket-access pattern crashed
-        # mid-resume with confusing KeyErrors.
+        # Use .get() + warn (not bracket access) because wrap_*_pretrained.py
+        # ships checkpoints with empty optimizer/scheduler dicts.
         if load_backbone:
             backbone_sd = checkpoint.get("backbone_state_dict")
             if backbone_sd is None:
@@ -696,14 +589,8 @@ class Trainer:
             self.scaler.load_state_dict(checkpoint["scaler_state_dict"])
 
         self.epoch = int(checkpoint.get("epoch", 0)) + 1
-        # Prefer the persisted running-best when present (B-3 fix). Falling
-        # back to the checkpoint's own `val_loss` keeps backward
-        # compatibility with checkpoints saved before this field existed —
-        # at the cost of the same "non-best resume forgets the real best"
-        # behavior the field was added to prevent, but only for legacy
-        # checkpoints. New runs from this point forward persist
-        # `best_val_loss` directly. `float("inf")` as the final fallback
-        # mirrors a fresh run (any val_loss becomes the new best).
+        # Prefer persisted running-best; fall back to checkpoint's val_loss for
+        # legacy checkpoints, then inf for fresh runs.
         self.best_val_loss = float(
             checkpoint.get("best_val_loss", checkpoint.get("val_loss", float("inf")))
         )
@@ -737,11 +624,8 @@ class Trainer:
             entry["eval"] = eval_results
         full_history[f"epoch_{self.epoch}"] = entry
 
-        # Defensive serialization: today every periodic-eval payload fits in
-        # plain JSON (floats + lists of floats), but evaluators are extension
-        # points and a future one returning a numpy array or torch.Tensor
-        # would crash json.dump and corrupt the history file. The default
-        # encoder below stringifies any unknown type rather than blowing up.
+        # Defensive serializer: a future evaluator returning numpy / torch tensors
+        # would crash json.dump otherwise.
         def _default(o):
             if hasattr(o, "tolist"):
                 return o.tolist()

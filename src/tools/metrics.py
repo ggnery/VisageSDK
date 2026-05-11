@@ -1,11 +1,6 @@
-"""Pure metric functions for face recognition evaluation.
+"""Metric functions for verification (pair-based) and identification (gallery/probe).
 
-Verification: pair-based binary task (same/different).
-Identification: gallery/probe retrieval task (rank-N, mAP, CMC).
-
-All functions accept torch tensors or numpy arrays. Embeddings are assumed
-unnormalized; distance/similarity helpers L2-normalize internally when
-the cosine metric is used.
+Embeddings are assumed unnormalized; cosine helpers L2-normalize internally.
 """
 
 import numpy as np
@@ -117,16 +112,10 @@ def eer(distances: np.ndarray, labels: np.ndarray) -> tuple[float, float]:
 
 
 def tar_at_far(distances: np.ndarray, labels: np.ndarray, far_target: float) -> tuple[float, float]:
-    """True Accept Rate at a target False Accept Rate.
+    """True Accept Rate at a target FAR. Returns (tar, threshold).
 
-    Returns (tar, threshold). Sweeps thresholds and returns the (TPR,
-    threshold) pair whose FAR <= `far_target` and maximizes TPR.
-
-    Note: the smallest threshold in the sweep is `min(distances)`, which
-    by construction yields FPR = 0 (no pair is predicted "same" when the
-    threshold is strictly below every observed distance). So at least one
-    threshold always satisfies `fpr <= far_target` for any positive
-    `far_target` — no "no valid threshold" branch is needed.
+    The smallest swept threshold yields FAR=0 by construction, so at least
+    one candidate always satisfies fpr<=far_target for any positive target.
     """
     fpr, tpr, thresholds = roc_curve(distances, labels, n_thresholds=2000)
     valid = fpr <= far_target
@@ -167,10 +156,7 @@ def lfw_kfold_accuracy(
         thresholds.append(thr)
     accs = np.array(accuracies)
     thrs = np.array(thresholds)
-    # Use ddof=1 (sample std) — that is what the LFW community reports for
-    # the 10-fold protocol, and it agrees with numpy/scipy default
-    # conventions for "stddev of a sample". ddof=1 with len <= 1 is
-    # undefined; collapse to 0.0 in that degenerate case.
+    # ddof=1 matches the LFW community's reported 10-fold protocol.
     return {
         "accuracy_mean": float(accs.mean()) if len(accs) else 0.0,
         "accuracy_std": float(accs.std(ddof=1)) if len(accs) > 1 else 0.0,

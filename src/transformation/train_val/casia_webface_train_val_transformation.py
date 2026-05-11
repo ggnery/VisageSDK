@@ -10,10 +10,6 @@ class CasiaWebFaceTrainTransformation(BaseTransformation):
     @override
     def build_transformation(self, cfg: TransformationConfig) -> list:
         train = cfg.train
-        # Apply every augmentation the YAML actually declares, instead of
-        # silently ignoring `random_rotation` / `color_jitter` keys (which
-        # the old version did, leaving users to wonder why their listed
-        # augmentations weren't influencing training).
         layers: list = [
             transforms.RandomHorizontalFlip(p=train["random_horizontal_flip"]),
         ]

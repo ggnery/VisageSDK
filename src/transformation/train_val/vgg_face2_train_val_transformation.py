@@ -10,11 +10,6 @@ class VGGFace2TrainTransformation(BaseTransformation):
     @override
     def build_transformation(self, cfg: TransformationConfig) -> list:
         train = cfg.train
-        # Mirror CasiaWebFaceTrainTransformation's defensive pattern: apply
-        # each augmentation only when the YAML actually declares it, instead
-        # of crashing with KeyError when a user trims `random_rotation` /
-        # `color_jitter` out of the YAML. Keeps the two train transforms
-        # consistent so users can swap between them without surprise edits.
         layers: list = [
             transforms.RandomHorizontalFlip(p=train["random_horizontal_flip"]),
         ]

@@ -14,16 +14,9 @@ def freeze_by_patterns(
     patterns: list[str] | None = None,
     except_patterns: list[str] | None = None,
 ) -> list[str]:
-    """Set requires_grad=False on parameters matching the policy.
-
-    Exactly one of `patterns` / `except_patterns` should be provided.
-    - patterns: freeze params whose name matches any pattern.
-    - except_patterns: freeze params whose name does NOT match any pattern.
-
-    Patterns use fnmatch syntax against the full named_parameters() key
-    (e.g. 'features.0.conv.weight', 'features.[0-2].*', 'last_linear*').
-
-    Returns the list of frozen parameter names.
+    """Freeze parameters whose name matches `patterns` (fnmatch syntax), or
+    everything NOT matching `except_patterns`. Provide exactly one. Returns
+    the list of frozen parameter names.
     """
     if (patterns is None) == (except_patterns is None):
         raise ValueError("Provide exactly one of `patterns` or `except_patterns`")

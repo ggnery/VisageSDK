@@ -94,10 +94,8 @@ class InceptionA(nn.Module):
             Conv2d(64, 96, 3, stride=1, padding=1, bias=False),
             Conv2d(96, 96, 3, stride=1, padding=1, bias=False),
         )
-        # Use `in_channels` (not the hardcoded 384) — branch_3's avg-pool
-        # preserves channel count, so the projection conv must accept
-        # whatever was passed in. Worked in practice only because
-        # InceptionV4 always instantiates this block with in_channels=384.
+        # branch_3's avg-pool preserves channel count, so use `in_channels`
+        # (not a hardcoded 384) for the projection conv.
         self.branch_3 = nn.Sequential(
             nn.AvgPool2d(3, 1, padding=1, count_include_pad=False),
             Conv2d(in_channels, 96, 1, stride=1, padding=0, bias=False),

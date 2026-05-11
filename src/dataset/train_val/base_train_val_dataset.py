@@ -17,13 +17,8 @@ class BaseTrainValDataset(Dataset):
     def __init__(self, dataset_config: TrainValDatasetConfig, transformation: BaseTransformation) -> None:
         super().__init__()
 
-        # Build `label_to_idx` from the UNION of class names across all
-        # splits (train + val), sorted alphabetically. Without this, each
-        # split would index classes independently — so a class that
-        # appears in train but not val (or vice versa) would land on
-        # different integer IDs, and the cross-entropy / margin head
-        # trained on `train` would mispredict on `val`. Subclasses
-        # implement `read_all_labels` to enumerate the union.
+        # Build label_to_idx from the UNION of train + val class names so the
+        # same class always maps to the same integer ID across splits.
         all_labels = self.read_all_labels(dataset_config)
         self.label_to_idx = {label: i for i, label in enumerate(all_labels)}
 
@@ -33,17 +28,12 @@ class BaseTrainValDataset(Dataset):
         self.label_map = defaultdict(list)
         for idx, (label, _) in enumerate(self.data):
             if label not in self.label_to_idx:
-                # Defensive: `read_all_labels` should have returned the
-                # full union. If a label slips through (custom subclass
-                # mismatch), assign a fresh index so __getitem__ doesn't
-                # KeyError — but the loss head sized to len(label_to_idx)
-                # at construction time will be one slot short.
+                # Defensive fallback if a subclass's read_all_labels missed it.
                 self.label_to_idx[label] = len(self.label_to_idx)
             self.label_map[self.label_to_idx[label]].append(idx)
 
-        # Sanity check against the dataset's declared `num_classes`: the
-        # loss head is sized from this value, and if it's smaller than
-        # the actual count the trainer indexes out of bounds.
+        # Reject `num_classes` smaller than the actual count — loss head would
+        # be sized too small and indexing would go out of bounds.
         num_classes = getattr(dataset_config, "num_classes", None)
         if num_classes is not None and num_classes < len(self.label_to_idx):
             raise ValueError(
@@ -66,8 +56,5 @@ class BaseTrainValDataset(Dataset):
         raise NotImplementedError()
 
     def read_all_labels(self, dataset_config: TrainValDatasetConfig) -> list[str]:
-        """Override to return the sorted UNION of class labels across all
-        splits the dataset consumes. The base `__init__` uses this to
-        align integer IDs between train and val so the loss head's
-        outputs stay coherent across splits."""
+        """Override to return the sorted UNION of class labels across splits."""
         raise NotImplementedError()

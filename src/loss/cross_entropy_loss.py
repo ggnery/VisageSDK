@@ -9,9 +9,6 @@ class CrossEntropyLoss(BaseLoss):
     def __init__(self, loss_config: LossConfig):
         super().__init__(loss_config)
 
-        # Use getattr with documented defaults so the loss doesn't blow up
-        # deep in nn.Linear with a confusing AttributeError when the YAML
-        # omits an optional knob. Mirrors the pattern used by `CenterLoss`.
         self.use_bias = bool(getattr(loss_config, "use_bias", True))
         self.label_smoothing = float(getattr(loss_config, "label_smoothing", 0.0))
         self.linear = nn.Linear(self.embedding_size, self.num_classes, bias=self.use_bias)

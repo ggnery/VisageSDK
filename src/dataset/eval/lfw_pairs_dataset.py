@@ -1,26 +1,11 @@
 """LFW verification dataset.
 
-Reads the standard `pairs.txt` format with optional asymmetric extension:
+Reads `pairs.txt` in either the standard 2-token header (`<n_folds> <n_pairs>`)
+or the asymmetric 3-token header (`<n_folds> <n_same> <n_diff>`) for low-FAR
+resolution. Image paths follow `<eval_dir>/<name>/<name>_<idx:04d>.<ext>`.
 
-    Balanced (legacy LFW):
-        <n_folds> <n_pairs_per_fold>          # 2-token header
-        <name> <idx_a> <idx_b>                # n_pairs_per_fold same lines
-        <name_a> <idx_a> <name_b> <idx_b>     # n_pairs_per_fold diff lines
-
-    Asymmetric (extended for low-FAR resolution):
-        <n_folds> <n_same_per_fold> <n_diff_per_fold>   # 3-token header
-        ...n_same_per_fold same lines...
-        ...n_diff_per_fold diff lines...
-
-The asymmetric format lets you ship many more negatives than positives
-when the test set has a hard ceiling on unique positive pairs but a much
-larger pool of unique negatives — the typical situation when you want
-TAR@FAR≤1e-5 measurable. Image paths are resolved as
-    <eval_dir>/<name>/<name>_<idx:04d>.jpg
-
-The dataset exposes a flat list of unique images (so each image is encoded
-once even if it appears in multiple pairs) plus a list of pairs as
-(idx_a, idx_b, is_same, fold_id).
+Each unique image is encoded once; pairs are exposed as
+`(img_idx_a, img_idx_b, is_same, fold_id)`.
 """
 
 from pathlib import Path

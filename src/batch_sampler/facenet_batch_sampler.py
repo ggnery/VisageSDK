@@ -32,54 +32,36 @@ class FacenetBatchSampler(BaseBatchSampler):
 
         self.num_valid_identities = len(self.valid_identities)
 
-        # Use a per-instance Random so the sampler's order doesn't depend on
-        # whoever else touched the global `random` state since `set_seed`.
-        # When the trainer's seed is propagated into this config (the
-        # builder injects `trainer_config.seed` here if the YAML doesn't
-        # already set `seed`), reproducibility is bit-exact across runs.
-        # Without a seed, `random.Random()` auto-seeds from os.urandom
-        # so the stream is isolated from the global RNG state without
-        # consuming from it (the previous `random.Random(random.random())`
-        # both consumed from the global stream AND made the seed
-        # dependent on it, defeating the isolation goal).
+        # Per-instance RNG so the sampler is isolated from the global random state.
         seed = getattr(config, "seed", None)
         self._rng = random.Random(int(seed)) if seed is not None else random.Random()
 
     @override
     def __iter__(self):
-        """Generate batches according to FaceNet sampling strategy."""
-        # Shuffle identities for each epoch
         identity_order = self.valid_identities.copy()
         self._rng.shuffle(identity_order)
 
-        # Generate batches
         for i in range(0, len(identity_order), self.num_identities_per_batch):
             batch_identities = identity_order[i : i + self.num_identities_per_batch]
 
             if len(batch_identities) < self.num_identities_per_batch:
-                # Pad the last partial batch. `choices` (with replacement) tolerates
-                # `remaining > num_valid_identities`, which `sample` does not.
+                # Pad last partial batch with replacement (sample would fail when
+                # remaining > num_valid_identities).
                 remaining = self.num_identities_per_batch - len(batch_identities)
                 extra_identities = self._rng.choices(self.valid_identities, k=remaining)
                 batch_identities.extend(extra_identities)
 
-            # Sample faces for each identity. `valid_identities` already
-            # filters to classes with >= `faces_per_identity` samples, so the
-            # without-replacement branch always applies — no fall-through to
-            # `choices` is reachable from the normal flow.
             batch_indices = []
             for identity in batch_identities:
                 identity_samples = self.dataset.label_map[identity]
                 selected = self._rng.sample(identity_samples, self.faces_per_identity)
                 batch_indices.extend(selected)
 
-            # Shuffle within batch for better mixing
             self._rng.shuffle(batch_indices)
             yield batch_indices
 
     @override
     def __len__(self):
-        """Number of batches per epoch."""
         return (
             self.num_valid_identities + self.num_identities_per_batch - 1
         ) // self.num_identities_per_batch

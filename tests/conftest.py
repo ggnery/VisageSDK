@@ -1,11 +1,4 @@
-"""Shared pytest fixtures.
-
-The project is editable-installed (see pyproject.toml's
-`[tool.setuptools] package-dir = {"" = "src"}`), so test modules can
-import `registry`, `tools.metrics`, etc. directly without any sys.path
-gymnastics. This file just provides reusable on-disk fixtures and a
-tiny model to drive evaluator/trainer tests.
-"""
+"""Shared pytest fixtures: on-disk dataset trees + a tiny backbone."""
 
 from __future__ import annotations
 
@@ -22,18 +15,13 @@ from transformation.base_transformation import BaseTransformation
 
 
 class _PassthroughTransformation(BaseTransformation):
-    """Real BaseTransformation subclass for tests — bypasses the parent's
-    resize step and just emits a ToTensor pipeline so tests can pass it
-    anywhere a `BaseTransformation` is expected without touching
-    `BaseTransformation.__init__`'s config dependency.
-    """
+    """BaseTransformation that skips the resize and only emits ToTensor."""
 
     def __init__(self) -> None:
         self.transform = transforms.Compose([transforms.ToTensor()])
 
     def build_transformation(self, transformation_config) -> list:
-        # Never reached because we override __init__, but required to
-        # satisfy BaseTransformation's @abstractmethod contract.
+        # Unreachable (we override __init__); kept to satisfy the ABC.
         return [transforms.ToTensor()]
 
 
@@ -117,10 +105,7 @@ _COMPONENT_PACKAGES = (
 
 @pytest.fixture
 def populated_registries():
-    """Force side-effect imports so every registry is populated.
-
-    Returns a SimpleNamespace exposing each registry as an attribute.
-    """
+    """Force side-effect imports so every registry is populated."""
     for pkg in _COMPONENT_PACKAGES:
         importlib.import_module(pkg)
     from registry import (
@@ -147,8 +132,7 @@ def populated_registries():
 
 
 class _TinyBackbone(torch.nn.Module):
-    """Minimal embedding model used to drive evaluator / trainer tests
-    without paying for a real CNN init/forward."""
+    """Minimal embedding model for evaluator/trainer tests."""
 
     def __init__(self, embedding_size: int = 16):
         super().__init__()

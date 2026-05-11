@@ -102,10 +102,11 @@ The GUI lets you pick components, edit their YAMLs inline, launch training, watc
 uv run streamlit run gui/app.py
 ```
 
-It exposes three tabs:
+It exposes four tabs:
 
 - **Configure & Train** — registry-backed dropdowns for every component, inline YAML editors, quick overrides for `num_epochs` / `device` / `seed` / AMP / TensorBoard, and an optional `periodic_eval` block. Clicking *Launch Training* snapshots the YAMLs into `runs/<timestamp>/configs/` and spawns `train.py`.
-- **Monitor** — picks a run and reads the trainer's TensorBoard events live: loss/lr/eval/train_stats/val_stats line charts plus the tail of `train.log`. Auto-refresh and a Stop button are built in.
+- **Monitor Train** — picks a training run and reads the trainer's TensorBoard events live: loss/lr/eval/train_stats/val_stats line charts plus the tail of `train.log`. Auto-refresh and a Stop button are built in.
+- **Monitor Eval** — picks an eval run and renders the JSON metric bundle (headline cards, ROC curve, score distributions) plus the tail of `eval.log`.
 - **Evaluate** — picks a checkpoint and runs `eval.py` against any registered evaluator, displaying the JSON results.
 
 ## Project layout

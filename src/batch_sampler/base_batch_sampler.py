@@ -12,20 +12,10 @@ class BaseBatchSampler(BatchSampler):
 
     @override
     def __iter__(self) -> Iterator[int]:
-        """
-        Returns an iterator over batches of dataset indices.
-
-        Returns:
-            Iterator[List[int]]: Iterator yielding lists of integer indices (batches)
-        """
+        """Yield batches of dataset indices (list[int])."""
         raise NotImplementedError()
 
     @override
     def __len__(self) -> int:
-        """
-        Returns the number of batches in the sampler.
-
-        Returns:
-            int: Total number of batches
-        """
+        """Return number of batches per epoch."""
         raise NotImplementedError()

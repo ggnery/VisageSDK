@@ -25,18 +25,10 @@ class AdaptativeEarlyStopper(BaseEarlyStopper):
             self.dynamic_patience = self.base_patience
         else:
             self.wait_count += 1
-            # Grow `dynamic_patience` ONCE when `wait_count` crosses the
-            # increase threshold, instead of every epoch. The pre-fix code
-            # incremented every epoch, so with `patience_increase_ratio < 1`
-            # (the YAML default is 0.8) `dynamic_patience` and `wait_count`
-            # grew in lockstep and the stop condition `wait_count >=
-            # dynamic_patience` was never reached — the stopper silently
-            # never triggered.
+            # Grow dynamic_patience once when wait_count crosses the threshold
+            # (one-shot "second chance" — incrementing every epoch never stops).
             threshold = int(self.base_patience * self.patience_increase_ratio)
             if self.wait_count == threshold and self.dynamic_patience == self.base_patience:
-                # One-shot extension: grant a "second chance" window of length
-                # `base_patience - threshold` so total grace ≈ 2 × base_patience
-                # when ratio < 1, or grace = base_patience when ratio >= 1.
                 extra = max(1, self.base_patience - threshold)
                 self.dynamic_patience = self.base_patience + extra
             if self.wait_count >= self.dynamic_patience:

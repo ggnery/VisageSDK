@@ -28,14 +28,8 @@ def build_scheduler(optimizer: Optimizer, config: TrainerConfig) -> LRScheduler:
 
 
 def build_stair_lr(optimizer: Optimizer, scheduler_params: dict[int, float]) -> LambdaLR:
-    """Stair LR: at each milestone epoch, set the LR to the configured value.
-
-    The YAML maps `epoch -> absolute_lr`. Each parameter group is given its
-    own lambda so the absolute target applies regardless of the group's base
-    LR — for example with discriminative LRs (`optimizer.param_groups`), all
-    groups land on the same target value at each milestone instead of being
-    scaled multiplicatively from group 0's base.
-    """
+    """Stair LR: YAML maps `epoch -> absolute_lr`. Per-group lambdas so the
+    absolute target applies regardless of each group's base LR."""
     epochs = sorted(scheduler_params.keys())
 
     def make_lambda(base_lr: float):

@@ -28,11 +28,8 @@ from run_manager import (
     write_yaml,
 )
 
-# `gui/` is intentionally NOT installed as a package (only src/* is — see
-# pyproject.toml). When Streamlit runs the script it adds the script's own
-# directory (gui/) to sys.path, so `run_manager` resolves as a flat module
-# alongside the installed `src/` packages (e.g. `registry`). Isort
-# can't tell them apart from regular third-party imports.
+# Streamlit adds gui/ to sys.path so `run_manager` resolves as a flat module
+# alongside the installed `src/*` packages (registry, etc.).
 from registry import (
     BACKBONES,
     DATASETS,
@@ -109,12 +106,8 @@ def yaml_field(label: str, key_prefix: str, subdir: str, default_pattern: str = 
         format_func=lambda p: str(p.relative_to(REPO_ROOT)),
         key=f"{key_prefix}_yaml_select",
     )
-    # Streamlit's text_area is sticky: once a key is in session_state, the
-    # `value=` arg is ignored on later renders. Tying the widget key to the
-    # selected file path gives each file its own widget identity, so switching
-    # the dropdown drops a fresh widget that honors `value=` (the file's
-    # disk content). Inline edits to the same file are preserved across
-    # reruns because the key stays stable while the file is selected.
+    # Tie the text_area key to the selected file path so switching the
+    # dropdown drops a fresh widget that honors `value=` (text_area is sticky).
     file_disk_text = load_yaml_text(selected)
     text_key = f"{key_prefix}_yaml_text__{selected.name}"
     text = st.text_area(
@@ -123,9 +116,7 @@ def yaml_field(label: str, key_prefix: str, subdir: str, default_pattern: str = 
         height=180,
         key=text_key,
     )
-    # Final safety net: if for any reason the editor still came back empty
-    # while the file on disk has content, fall back to the disk text. Prevents
-    # silent zero-byte snapshots that crash eval.py / train.py downstream.
+    # Safety net against zero-byte snapshots crashing the subprocess later.
     if not text.strip() and file_disk_text.strip():
         text = file_disk_text
     return selected, text
@@ -164,12 +155,8 @@ def render_configure_tab() -> None:
         _, ds_text = yaml_field("Dataset", "ds", "dataset/train_val")
 
         st.subheader("Train/val transformation")
-        # Filter by naming convention so the user can't accidentally pick
-        # `lfw_eval` (which expects `{normalize: {...}}`) for the train
-        # split (which expects `{train: {...}, val: {...}}`) — that
-        # mismatch crashes inside the transformation with a confusing
-        # AttributeError. Same goes for picking a `_val` transform as
-        # the train transformation.
+        # Filter by suffix so the user can't pick a `_val` or `_eval` transform
+        # for the train split (mismatch crashes deep inside the transformation).
         tx_names = sorted(TRANSFORMATIONS.names())
         train_tx_candidates = [n for n in tx_names if n.endswith("_train")] or tx_names
         val_tx_candidates = [n for n in tx_names if n.endswith("_val")] or tx_names
@@ -242,10 +229,8 @@ def render_configure_tab() -> None:
     )
 
     if launch_btn:
-        # Refuse to launch if any required YAML editor came back empty —
-        # this used to silently produce zero-byte snapshots and crash
-        # train.py with confusing AttributeErrors deep in the config loader.
-        # Mirrors the same guard already in render_evaluate_tab.
+        # Refuse to launch with any empty YAML editor (would create zero-byte
+        # snapshots that crash train.py downstream).
         empty_required = [
             label
             for label, content in (
@@ -426,10 +411,7 @@ def render_monitor_tab() -> None:
             else:
                 st.error(f"Status: EXITED ({rc})")
 
-    # Charts and log are wrapped in a fragment so auto-refresh re-renders ONLY
-    # them (without freezing the controls above with `time.sleep`). When
-    # `auto_refresh` is off or the run is finished, run_every=None disables
-    # the periodic re-run.
+    # Fragment so auto-refresh re-renders only charts/log, not the controls.
     auto_run_every = (
         int(refresh_interval) if (st.session_state.auto_refresh and handle and handle.is_alive) else None
     )
@@ -877,10 +859,7 @@ def render_evaluate_tab() -> None:
     )
 
     if st.button("Run evaluation", type="primary"):
-        # Refuse to launch if any YAML editor came back empty — happens when the
-        # text_area's session_state was never populated and would otherwise yield
-        # zero-byte YAMLs that crash eval.py downstream with confusing errors
-        # like 'BackboneConfig has no attribute input_size'.
+        # Refuse zero-byte snapshots (would crash eval.py downstream).
         empty = [
             label
             for label, content in (

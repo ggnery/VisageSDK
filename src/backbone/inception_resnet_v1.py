@@ -19,13 +19,8 @@ class BasicConv2d(nn.Module):
         super().__init__()
         self.conv = nn.Conv2d(
             in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, bias=False
-        )  # verify bias false
-        self.bn = nn.BatchNorm2d(
-            out_planes,
-            eps=0.001,  # value found in tensorflow
-            momentum=0.1,  # default pytorch value
-            affine=True,
         )
+        self.bn = nn.BatchNorm2d(out_planes, eps=0.001, momentum=0.1, affine=True)
         self.relu = nn.ReLU(inplace=False)
 
     def forward(self, x):
@@ -177,20 +172,13 @@ class Mixed_7a(nn.Module):
 
 
 class InceptionResNetV1(BaseBackbone):
-    """Implementation on InceptionResNetV1 from:
-    - https://arxiv.org/pdf/1602.07261 (original paper)
-    - https://github.com/timesler/facenet-pytorch (original code)
-
-    Args:
-        BaseBackbone (_type_): _description_
-    """
+    """InceptionResNetV1 from https://arxiv.org/pdf/1602.07261 (port of facenet-pytorch)."""
 
     def __init__(self, backbone_config: BackboneConfig) -> None:
         super().__init__(backbone_config)
 
         self.dropout_prob = 1 - backbone_config.dropout_keep
 
-        # Define layers
         self.conv2d_1a = BasicConv2d(3, 32, kernel_size=3, stride=2)
         self.conv2d_2a = BasicConv2d(32, 32, kernel_size=3, stride=1)
         self.conv2d_2b = BasicConv2d(32, 64, kernel_size=3, stride=1, padding=1)
@@ -234,14 +222,6 @@ class InceptionResNetV1(BaseBackbone):
 
     @override
     def forward(self, x):
-        """Calculate embeddings or logits given a batch of input image tensors.
-
-        Arguments:
-            x {torch.tensor} -- Batch of image tensors representing faces.
-
-        Returns:
-            torch.tensor -- Batch of embedding vectors or multinomial logits.
-        """
         x = self.conv2d_1a(x)
         x = self.conv2d_2a(x)
         x = self.conv2d_2b(x)
