@@ -142,4 +142,39 @@ class TrainerConfig(BaseConfig):
         if self.lora_enabled and not self.lora_target_modules:
             raise ValueError("lora.enabled requires at least one entry in lora.target_modules")
 
+        # When LoRA is enabled, PEFT wraps the backbone and renames every
+        # parameter to `base_model.model.<original>` while marking only
+        # `lora_A`/`lora_B` (and any `modules_to_save` entries) trainable.
+        # This makes the following blocks silently no-op or incompatible:
+        #   - `freeze.patterns` / `freeze.except`: PEFT already handles
+        #     freezing — running freeze_by_patterns first only to have PEFT
+        #     overwrite it leaves the user with the wrong mental model.
+        #   - `freeze.unfreeze_at_epoch`: patterns are written against
+        #     bare backbone names and never match PEFT-prefixed ones; the
+        #     schedule is silently a no-op.
+        #   - `optimizer.param_groups`: pattern strings like
+        #     "backbone.last_linear*" don't match
+        #     "backbone.base_model.model.last_linear.lora_A.default.weight",
+        #     so discriminative LRs collapse into the default group.
+        # Catch all three combinations up front with explicit errors.
+        if self.lora_enabled:
+            if self.freeze_patterns or self.freeze_except:
+                raise ValueError(
+                    "`lora.enabled` is incompatible with `freeze.patterns`/`freeze.except`: "
+                    "PEFT handles all freezing of the base backbone — remove the freeze block."
+                )
+            if self.unfreeze_at_epoch:
+                raise ValueError(
+                    "`lora.enabled` is incompatible with `freeze.unfreeze_at_epoch`: "
+                    "patterns won't match PEFT-prefixed names. Remove the schedule or "
+                    "use full fine-tuning instead of LoRA."
+                )
+            if self.optimizer_param_groups:
+                raise ValueError(
+                    "`lora.enabled` is incompatible with `optimizer.param_groups`: "
+                    "pattern strings target bare backbone names that don't match "
+                    "PEFT-wrapped parameter names. Drop the param_groups block, or "
+                    "switch off LoRA if you need discriminative learning rates."
+                )
+
         self.periodic_eval = self._params.get("periodic_eval")

@@ -238,10 +238,13 @@ class MobileNetV3(BaseBackbone):
         self.width_mult = config.width_mult
         self.reduced_tail = config.reduced_tail
         self.dilated = config.dilated
-        self.input_size = config.input_size
+        # input_size already set by BaseBackbone.__init__ as a list.
 
-        # Build model configuration
-        inverted_residual_setting, last_channel = self._mobilenet_v3_conf(
+        # Build model configuration. `_mobilenet_v3_conf` historically also
+        # returned a `last_channel` value that was never consumed by the
+        # forward path (we derive `lastconv_output_channels = 6 *
+        # lastconv_input_channels` ourselves below), so we discard it.
+        inverted_residual_setting = self._mobilenet_v3_conf(
             arch="mobilenet_v3_" + self.model_size,
             width_mult=self.width_mult,
             reduced_tail=self.reduced_tail,
@@ -322,7 +325,12 @@ class MobileNetV3(BaseBackbone):
         dilation = 2 if dilated else 1
 
         bneck_conf = partial(InvertedResidualConfig, width_mult=width_mult)
+        # `adjust_channels` was retained to compute `last_channel` for the
+        # legacy classification head; the feature-embedding pipeline doesn't
+        # consume it. Kept here as a closure so the surrounding tables stay
+        # diff-clean against the original mobilenet_v3 reference impl.
         adjust_channels = partial(InvertedResidualConfig.adjust_channels, width_mult=width_mult)
+        _ = adjust_channels  # silence unused-binding linters
 
         if arch == "mobilenet_v3_large":
             inverted_residual_setting = [
@@ -360,7 +368,6 @@ class MobileNetV3(BaseBackbone):
                     dilation,
                 ),
             ]
-            last_channel = adjust_channels(1280 // reduce_divider)  # C5
         elif arch == "mobilenet_v3_small":
             inverted_residual_setting = [
                 bneck_conf(16, 3, 16, 16, True, "RE", 2, 1),  # C1
@@ -393,8 +400,7 @@ class MobileNetV3(BaseBackbone):
                     dilation,
                 ),
             ]
-            last_channel = adjust_channels(1024 // reduce_divider)  # C5
         else:
             raise ValueError(f"Unsupported model type {arch}")
 
-        return inverted_residual_setting, last_channel
+        return inverted_residual_setting

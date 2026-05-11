@@ -4,5 +4,8 @@
 train_dir: "/home/gabriel-nery/ceia/FaceNet/data/croped/vggface2/train"
 val_dir: "/home/gabriel-nery/ceia/FaceNet/data/croped/vggface2/val"
 
-num_classes: null # train + validation number of classes
+# VGGFace2 has 8631 identities in the public train set. Adjust to the
+# actual count of class folders that survive your train/val split — the
+# dataset config rejects null with an explicit error.
+num_classes: 8631
 #=======================#=======================#=======================

@@ -119,13 +119,17 @@ def eer(distances: np.ndarray, labels: np.ndarray) -> tuple[float, float]:
 def tar_at_far(distances: np.ndarray, labels: np.ndarray, far_target: float) -> tuple[float, float]:
     """True Accept Rate at a target False Accept Rate.
 
-    Returns (tar, threshold). Picks the highest threshold (strictest) whose
-    FAR <= far_target. If no threshold meets it, returns (0, min_threshold).
+    Returns (tar, threshold). Sweeps thresholds and returns the (TPR,
+    threshold) pair whose FAR <= `far_target` and maximizes TPR.
+
+    Note: the smallest threshold in the sweep is `min(distances)`, which
+    by construction yields FPR = 0 (no pair is predicted "same" when the
+    threshold is strictly below every observed distance). So at least one
+    threshold always satisfies `fpr <= far_target` for any positive
+    `far_target` — no "no valid threshold" branch is needed.
     """
     fpr, tpr, thresholds = roc_curve(distances, labels, n_thresholds=2000)
     valid = fpr <= far_target
-    if not valid.any():
-        return 0.0, float(thresholds[0])
     idx_candidates = np.where(valid)[0]
     best = idx_candidates[np.argmax(tpr[idx_candidates])]
     return float(tpr[best]), float(thresholds[best])
@@ -163,11 +167,15 @@ def lfw_kfold_accuracy(
         thresholds.append(thr)
     accs = np.array(accuracies)
     thrs = np.array(thresholds)
+    # Use ddof=1 (sample std) — that is what the LFW community reports for
+    # the 10-fold protocol, and it agrees with numpy/scipy default
+    # conventions for "stddev of a sample". ddof=1 with len <= 1 is
+    # undefined; collapse to 0.0 in that degenerate case.
     return {
         "accuracy_mean": float(accs.mean()) if len(accs) else 0.0,
-        "accuracy_std": float(accs.std()) if len(accs) else 0.0,
+        "accuracy_std": float(accs.std(ddof=1)) if len(accs) > 1 else 0.0,
         "threshold_mean": float(thrs.mean()) if len(thrs) else 0.0,
-        "threshold_std": float(thrs.std()) if len(thrs) else 0.0,
+        "threshold_std": float(thrs.std(ddof=1)) if len(thrs) > 1 else 0.0,
     }
 
 

@@ -34,9 +34,14 @@ class FacenetBatchSampler(BaseBatchSampler):
 
         # Use a per-instance Random so the sampler's order doesn't depend on
         # whoever else touched the global `random` state since `set_seed`.
-        # We seed it from `random.random()` (which set_seed has initialized
-        # deterministically) so reproducibility is preserved end-to-end.
-        self._rng = random.Random(random.random())
+        # When the trainer's seed is propagated into this config (the
+        # builder injects `trainer_config.seed` here if the YAML doesn't
+        # already set `seed`), reproducibility is bit-exact across runs.
+        # Without a seed, we still create a per-instance Random so the
+        # sampler's stream stays isolated from later consumers of the
+        # global random state.
+        seed = getattr(config, "seed", None)
+        self._rng = random.Random(int(seed)) if seed is not None else random.Random(random.random())
 
     @override
     def __iter__(self):
@@ -56,17 +61,14 @@ class FacenetBatchSampler(BaseBatchSampler):
                 extra_identities = self._rng.choices(self.valid_identities, k=remaining)
                 batch_identities.extend(extra_identities)
 
-            # Sample faces for each identity
+            # Sample faces for each identity. `valid_identities` already
+            # filters to classes with >= `faces_per_identity` samples, so the
+            # without-replacement branch always applies — no fall-through to
+            # `choices` is reachable from the normal flow.
             batch_indices = []
             for identity in batch_identities:
                 identity_samples = self.dataset.label_map[identity]
-
-                # Sample with replacement if needed
-                if len(identity_samples) >= self.faces_per_identity:
-                    selected = self._rng.sample(identity_samples, self.faces_per_identity)
-                else:
-                    selected = self._rng.choices(identity_samples, k=self.faces_per_identity)
-
+                selected = self._rng.sample(identity_samples, self.faces_per_identity)
                 batch_indices.extend(selected)
 
             # Shuffle within batch for better mixing

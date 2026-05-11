@@ -163,9 +163,17 @@ def render_configure_tab() -> None:
         _, ds_text = yaml_field("Dataset", "ds", "dataset/train_val")
 
         st.subheader("Train/val transformation")
+        # Filter by naming convention so the user can't accidentally pick
+        # `lfw_eval` (which expects `{normalize: {...}}`) for the train
+        # split (which expects `{train: {...}, val: {...}}`) — that
+        # mismatch crashes inside the transformation with a confusing
+        # AttributeError. Same goes for picking a `_val` transform as
+        # the train transformation.
         tx_names = sorted(TRANSFORMATIONS.names())
-        train_tx_name = st.selectbox("Train transformation", tx_names, key="train_tx")
-        val_tx_name = st.selectbox("Val transformation", tx_names, key="val_tx")
+        train_tx_candidates = [n for n in tx_names if n.endswith("_train")] or tx_names
+        val_tx_candidates = [n for n in tx_names if n.endswith("_val")] or tx_names
+        train_tx_name = st.selectbox("Train transformation", train_tx_candidates, key="train_tx")
+        val_tx_name = st.selectbox("Val transformation", val_tx_candidates, key="val_tx")
         _, tx_text = yaml_field("Transformation", "tx", "transformation/train_val")
 
     with col_right:
@@ -209,7 +217,11 @@ def render_configure_tab() -> None:
                 "Eval dataset", "pe_ds_yaml", "dataset/eval"
             )
         with c2:
-            pe_eval_tx = st.selectbox("Eval transformation", sorted(TRANSFORMATIONS.names()), key="pe_tx")
+            eval_tx_names = (
+                [n for n in sorted(TRANSFORMATIONS.names()) if n.endswith("_eval")]
+                or sorted(TRANSFORMATIONS.names())
+            )
+            pe_eval_tx = st.selectbox("Eval transformation", eval_tx_names, key="pe_tx")
             pe_eval_tx_path, pe_tx_text = yaml_field(
                 "Eval transformation", "pe_tx_yaml", "transformation/eval"
             )
@@ -841,7 +853,11 @@ def render_evaluate_tab() -> None:
         eval_dataset = st.selectbox("Eval dataset", EVAL_DATASETS.names(), key="eval_ds_name")
         _, ds_text = yaml_field("Eval dataset", "eval_ds_yaml", "dataset/eval")
     with col2:
-        eval_tx = st.selectbox("Eval transformation", sorted(TRANSFORMATIONS.names()), key="eval_tx_name")
+        eval_tx_names = (
+            [n for n in sorted(TRANSFORMATIONS.names()) if n.endswith("_eval")]
+            or sorted(TRANSFORMATIONS.names())
+        )
+        eval_tx = st.selectbox("Eval transformation", eval_tx_names, key="eval_tx_name")
         _, tx_text = yaml_field("Eval transformation", "eval_tx_yaml", "transformation/eval")
         evaluator_name = st.selectbox("Evaluator", EVALUATORS.names(), key="evaluator_name")
         _, eval_text = yaml_field("Evaluator", "evaluator_yaml", "evaluator")

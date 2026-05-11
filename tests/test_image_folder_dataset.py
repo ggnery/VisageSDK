@@ -94,7 +94,10 @@ class TestDataContents:
                 {
                     "train_dir": str(tmp_path / "does_not_exist"),
                     "val_dir": str(tmp_path / "also_missing"),
-                    "num_classes": 0,
+                    # `num_classes` must be a positive int per the
+                    # TrainValDatasetConfig validation; we're testing the
+                    # FileNotFoundError path, not the num_classes guard.
+                    "num_classes": 1,
                 }
             )
         )
@@ -105,3 +108,84 @@ class TestDataContents:
 
         with pytest.raises(FileNotFoundError):
             ImageFolderDataset(bad_cfg, TX(), split="train")
+
+
+class TestLabelToIdxUnion:
+    """B-2 regression: label_to_idx must be built from the UNION of
+    train+val so that the same class name always maps to the same
+    integer ID in both splits. Otherwise the CE / margin head trained on
+    train mispredicts on val whenever the per-split class sets differ."""
+
+    def _build_asymmetric_layout(self, tmp_path):
+        """train has {alice, bob, carol}; val has {bob, carol, dave}."""
+        from PIL import Image
+
+        def _img(p):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            Image.new("RGB", (16, 16)).save(p)
+
+        for cls in ("alice", "bob", "carol"):
+            _img(tmp_path / "train" / cls / "x.jpg")
+        for cls in ("bob", "carol", "dave"):
+            _img(tmp_path / "val" / cls / "x.jpg")
+        cfg_path = tmp_path / "ds.yaml"
+        cfg_path.write_text(
+            yaml.safe_dump(
+                {
+                    "train_dir": str(tmp_path / "train"),
+                    "val_dir": str(tmp_path / "val"),
+                    "num_classes": 4,
+                }
+            )
+        )
+        return TrainValDatasetConfig(str(cfg_path), backbone_info={"input_size": [16, 16]})
+
+    def test_train_and_val_share_label_indices(self, tmp_path):
+        cfg = self._build_asymmetric_layout(tmp_path)
+        train_ds = ImageFolderDataset(cfg, _PassthroughTransformation(), split="train")
+        val_ds = ImageFolderDataset(cfg, _PassthroughTransformation(), split="val")
+        # Same union of 4 classes on both sides.
+        assert train_ds.label_to_idx == val_ds.label_to_idx
+        # Sanity: alphabetical → alice=0, bob=1, carol=2, dave=3.
+        assert train_ds.label_to_idx == {"alice": 0, "bob": 1, "carol": 2, "dave": 3}
+
+    def test_num_classes_smaller_than_union_raises(self, tmp_path):
+        cfg = self._build_asymmetric_layout(tmp_path)
+        # Override num_classes to a too-small value
+        cfg._params["num_classes"] = 2
+        with pytest.raises(ValueError, match="num_classes"):
+            ImageFolderDataset(cfg, _PassthroughTransformation(), split="train")
+
+
+class TestNumClassesValidation:
+    """B-9 regression: dataset YAML with `num_classes: null` used to
+    silently propagate None into `nn.Linear(embedding_size, None)` and
+    crash with an opaque TypeError deep in PyTorch. Validate up-front."""
+
+    def test_null_num_classes_raises(self, tmp_path):
+        cfg_path = tmp_path / "ds.yaml"
+        cfg_path.write_text(
+            yaml.safe_dump(
+                {
+                    "train_dir": str(tmp_path / "t"),
+                    "val_dir": str(tmp_path / "v"),
+                    "num_classes": None,
+                }
+            )
+        )
+        with pytest.raises(ValueError, match="num_classes"):
+            TrainValDatasetConfig(str(cfg_path), backbone_info={"input_size": [32, 32]})
+
+    def test_zero_num_classes_raises(self, tmp_path):
+        cfg_path = tmp_path / "ds.yaml"
+        cfg_path.write_text(
+            yaml.safe_dump(
+                {
+                    "train_dir": str(tmp_path / "t"),
+                    "val_dir": str(tmp_path / "v"),
+                    "num_classes": 0,
+                }
+            )
+        )
+        with pytest.raises(ValueError, match="num_classes"):
+            TrainValDatasetConfig(str(cfg_path), backbone_info={"input_size": [32, 32]})

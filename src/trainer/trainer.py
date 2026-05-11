@@ -129,9 +129,14 @@ class Trainer:
         if config.amp_enabled and self.device.type != "cuda":
             self.logger.info("AMP requested but device is not CUDA — disabling AMP.")
         self.amp_dtype = _DTYPE_MAP.get(config.amp_dtype.lower(), torch.float16)
-        self.scaler = torch.amp.GradScaler(
-            "cuda", enabled=self.amp_enabled and self.amp_dtype == torch.float16
-        )
+        # Only instantiate the GradScaler when AMP+fp16 is actually active.
+        # Constructing `torch.amp.GradScaler("cuda", enabled=False)` on a
+        # CUDA-less host still emits a "GradScaler is enabled, but cuda is
+        # not available" warning; gating the construction keeps CPU-only
+        # runs (tests, dev boxes) silent.
+        self.scaler: torch.amp.GradScaler | None = None
+        if self.amp_enabled and self.amp_dtype == torch.float16:
+            self.scaler = torch.amp.GradScaler("cuda")
 
         self.grad_clip_max_norm = config.grad_clip_max_norm
         self.grad_clip_norm_type = config.grad_clip_norm_type
@@ -231,6 +236,19 @@ class Trainer:
             self._tb_log_epoch(train_loss, val_loss, current_lr, train_stats, val_stats)
             eval_results = self._maybe_run_periodic_eval()
 
+            # Step the scheduler BEFORE save_checkpoint so the saved
+            # `scheduler_state_dict` + `optimizer_state_dict` reflect the
+            # "ready for next epoch" state. Without this, resuming a run
+            # silently trains epoch N+1 with the LR that was used for
+            # epoch N — the saved state lagged the schedule by one step
+            # because step() was called after save(). `current_lr` above
+            # already captures the LR used during *this* epoch's training
+            # so the TensorBoard log stays correct.
+            if isinstance(self.scheduler, ReduceLROnPlateau):
+                self.scheduler.step(val_loss)
+            else:
+                self.scheduler.step()
+
             if self.epoch % self.checkpoint_frequency == 0 or self.epoch == self.num_epochs:
                 self.save_checkpoint(train_loss, val_loss, self._checkpoint_name(f"epoch_{self.epoch}"))
 
@@ -241,11 +259,6 @@ class Trainer:
 
             self.save_stats(train_loss, val_loss, train_stats, val_stats, eval_results)
 
-            if isinstance(self.scheduler, ReduceLROnPlateau):
-                self.scheduler.step(val_loss)
-            else:
-                self.scheduler.step()
-
             if self.early_stopper is not None and self.early_stopper.early_stop(val_loss):
                 self.logger.info(f"Early stopping {self.early_stopper.__class__.__name__} triggered")
                 break
@@ -255,13 +268,28 @@ class Trainer:
             self.writer.close()
 
     def _apply_unfreeze_schedule(self, epoch: int) -> None:
-        patterns = self.config.unfreeze_at_epoch.get(epoch)
+        if epoch not in self.config.unfreeze_at_epoch:
+            return
+        patterns = self.config.unfreeze_at_epoch[epoch]
         if not patterns:
+            # Distinguish "no schedule for this epoch" (silent) from
+            # "schedule set but empty pattern list" (likely YAML typo —
+            # `3: []` instead of `3: ["features.*"]`).
+            self.logger.warning(
+                f"Epoch {epoch}: unfreeze_at_epoch has an empty pattern list — "
+                "nothing to unfreeze. Check your YAML."
+            )
             return
         unfrozen = unfreeze_by_patterns(self.backbone, patterns)
         if unfrozen:
             self.logger.info(f"Epoch {epoch}: unfroze {len(unfrozen)} params matching {patterns}")
             log_freeze_state(self.backbone, self.logger)
+        else:
+            # Patterns set but matched nothing — likely a typo or a name
+            # change after wrap (e.g. LoRA prefixing). Surface it.
+            self.logger.warning(
+                f"Epoch {epoch}: unfreeze patterns {patterns} matched no parameters."
+            )
 
     def _replay_unfreeze_up_to(self, last_completed_epoch: int) -> None:
         """Re-apply every unfreeze event scheduled at epoch <= last_completed_epoch.
@@ -341,9 +369,13 @@ class Trainer:
 
         With AMP fp16: must `unscale_` before clipping so the clip threshold
         applies to true (post-unscale) gradient magnitudes.
+
+        `use_scaler` is True only when `self.scaler is not None`; the
+        `assert` keeps type-checkers happy on the unscale/step calls below.
         """
         if self.grad_clip_max_norm is not None:
             if use_scaler:
+                assert self.scaler is not None
                 self.scaler.unscale_(self.optimizer)
             torch.nn.utils.clip_grad_norm_(
                 [p for g in self.optimizer.param_groups for p in g["params"] if p.requires_grad],
@@ -351,6 +383,7 @@ class Trainer:
                 norm_type=self.grad_clip_norm_type,
             )
         if use_scaler:
+            assert self.scaler is not None
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
@@ -363,7 +396,7 @@ class Trainer:
 
         self.backbone.train()
         self.loss.train()
-        use_scaler = self.amp_enabled and self.amp_dtype == torch.float16
+        use_scaler = self.scaler is not None
 
         pbar = tqdm(self.train_loader, desc=f"Train epoch {self.epoch}")
         for labels, images in pbar:
@@ -377,6 +410,7 @@ class Trainer:
                 loss, batch_stats = self.loss(embeddings, labels)
 
             if use_scaler:
+                assert self.scaler is not None
                 self.scaler.scale(loss).backward()
             else:
                 loss.backward()
@@ -485,7 +519,7 @@ class Trainer:
             "loss_state_dict": self.loss.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
-            "scaler_state_dict": self.scaler.state_dict() if self.amp_enabled else None,
+            "scaler_state_dict": self.scaler.state_dict() if self.scaler is not None else None,
         }
         # When PEFT wraps the backbone, the saved state_dict gains
         # `base_model.model.*` prefixes that no bare backbone can match.
@@ -646,7 +680,7 @@ class Trainer:
                     "usable 'optimizer_state_dict'; momentum/Adam state resets."
                 )
 
-        if self.amp_enabled and checkpoint.get("scaler_state_dict") is not None:
+        if self.scaler is not None and checkpoint.get("scaler_state_dict") is not None:
             self.scaler.load_state_dict(checkpoint["scaler_state_dict"])
 
         self.epoch = int(checkpoint.get("epoch", 0)) + 1

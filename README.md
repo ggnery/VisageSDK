@@ -167,7 +167,7 @@ The trainer uses a slightly richer config (`TrainerConfig`) because it has struc
 
 | Kind | Registered names |
 | --- | --- |
-| Backbones | `inception_resnet_v1`, `inception_resnet_v2`, `inception_v4`, `mobilenetv3` |
+| Backbones | `inception_resnet_v1`, `inception_resnet_v2`, `inception_v4`, `mobilenetv3`, `lvface_vit_b` |
 | Losses | `triplet`, `center`, `cross_entropy`, `margin_cosine` |
 | Train/val datasets | `image_folder` (single class with `split="train"`/`"val"`) |
 | Eval datasets | `lfw_pairs`, `identification` |
@@ -241,7 +241,7 @@ periodic_eval:
   every_n_epochs: 5
   dataset: lfw_pairs
   dataset_config: ./configs/dataset/eval/lfw_pairs.yaml
-  transformation: lfw
+  transformation: lfw_eval
   transformation_config: ./configs/transformation/eval/lfw.yaml
   evaluator: verification
   evaluator_config: ./configs/evaluator/lfw_verification.yaml

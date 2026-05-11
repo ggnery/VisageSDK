@@ -194,6 +194,12 @@ def build(
         return
 
     pairs_path = dst / "pairs.txt"
+    # Track already-emitted negatives so the rejection-sampled legacy
+    # mode doesn't emit the same impostor pair more than once per file.
+    # (Positives in the legacy LFW convention are intentionally allowed
+    # to repeat across folds — matches the upstream protocol.)
+    seen_neg: set[tuple[str, int, str, int]] = set()
+    max_attempts_per_neg = 100
     with open(pairs_path, "w") as f:
         f.write(f"{n_folds} {n_pairs_per_fold}\n")
         for _ in range(n_folds):
@@ -202,12 +208,27 @@ def build(
                 cls = rng.choice(classes_with_pos)
                 a, b = rng.sample(class_indices[cls], 2)
                 f.write(f"{cls} {a} {b}\n")
-            # Negative pairs: two distinct classes.
+            # Negative pairs: two distinct classes; reject duplicates.
             for _ in range(n_pairs_per_fold):
-                ca, cb = rng.sample(all_classes, 2)
-                a = rng.choice(class_indices[ca])
-                b = rng.choice(class_indices[cb])
-                f.write(f"{ca} {a} {cb} {b}\n")
+                for _attempt in range(max_attempts_per_neg):
+                    ca, cb = rng.sample(all_classes, 2)
+                    a = rng.choice(class_indices[ca])
+                    b = rng.choice(class_indices[cb])
+                    key = (ca, a, cb, b)
+                    if key not in seen_neg:
+                        seen_neg.add(key)
+                        f.write(f"{ca} {a} {cb} {b}\n")
+                        break
+                else:
+                    # Pool of unique negatives is genuinely exhausted —
+                    # fail loudly so the user picks --exhaustive or a
+                    # smaller --n-pairs-per-fold rather than silently
+                    # shipping fewer pairs than the header claims.
+                    raise RuntimeError(
+                        f"Could not sample a unique negative pair after "
+                        f"{max_attempts_per_neg} attempts. Pool likely exhausted; "
+                        "switch to --exhaustive or reduce --n-pairs-per-fold."
+                    )
 
     n_imgs = sum(len(ix) for ix in class_indices.values())
     n_pairs = n_folds * n_pairs_per_fold * 2

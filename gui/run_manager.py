@@ -153,8 +153,17 @@ def read_scalars(event_files: list[Path]) -> dict[str, list[tuple[int, float]]]:
             entries = aggregated.setdefault(tag, [])
             for event in ea.Scalars(tag):
                 entries.append((event.step, float(event.value)))
-    for entries in aggregated.values():
+    # Sort + dedupe by step so multiple events files (e.g. after a crash
+    # and resume that re-emits the same step) don't render duplicate
+    # points on the GUI charts. Last value wins — typically the
+    # re-emitted point is the freshest.
+    for tag, entries in aggregated.items():
         entries.sort(key=lambda x: x[0])
+        seen: dict[int, float] = {}
+        for step, value in entries:
+            seen[step] = value
+        aggregated[tag] = [(s, v) for s, v in seen.items()]
+        aggregated[tag].sort(key=lambda x: x[0])
     return aggregated
 
 

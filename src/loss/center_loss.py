@@ -57,8 +57,13 @@ class CenterLoss(BaseLoss):
         y_true = y_true.unsqueeze(1).expand(batch_size, self.num_classes)
         mask = y_true.eq(classes.expand(batch_size, self.num_classes))
 
-        dist = distmat * mask.float()
-        center_loss = dist.clamp(min=1e-12, max=1e12).sum() / batch_size
+        # Clamp BEFORE masking so the per-sample contributions of off-target
+        # classes (zeroed by `mask`) stay zero in the sum. The previous order
+        # (clamp after masking) bumped every off-target entry from 0 to 1e-12,
+        # adding a tiny but non-zero bias of 1e-12 * (num_classes - 1) per
+        # sample to the reported center loss.
+        dist = distmat.clamp(min=1e-12, max=1e12) * mask.float()
+        center_loss = dist.sum() / batch_size
 
         loss = cross_entropy_loss + self.alpha * center_loss
         additional_info = {

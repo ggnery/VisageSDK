@@ -84,6 +84,22 @@ class TrainerBuilder:
         self.trainer_config = TrainerConfig(self.env.trainer_config)
         self.config_str += self.trainer_config.get_config_string()
 
+        # Fail fast on device mismatch across YAMLs: the trainer moves
+        # batches to `trainer_config.device`, but the backbone and loss are
+        # built on their own YAML's `device`. A mismatch (e.g. backbone on
+        # cuda, trainer on cpu) silently produces a runtime device-mismatch
+        # error deep in the forward pass; explicit validation up front gives
+        # the user a fixable error pointing at the YAMLs.
+        bb_device = str(self.backbone_config.device)
+        loss_device = str(self.loss_config.device)
+        trainer_device = str(self.trainer_config.device)
+        if not (bb_device == loss_device == trainer_device):
+            raise ValueError(
+                "device mismatch across YAMLs: "
+                f"backbone={bb_device!r}, loss={loss_device!r}, trainer={trainer_device!r}. "
+                "Set all three to the same value."
+            )
+
         save_dir = Path(self.trainer_config.checkpoint_save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
         snapshot = save_dir / f"train_config_{datetime.now().isoformat(timespec='seconds')}.txt"
@@ -112,6 +128,15 @@ class TrainerBuilder:
 
         self.sampler = None
         if self.sampler_config is not None and self.env.sampler:
+            # Propagate the trainer's seed into the sampler config (the
+            # YAML can still override it). This wires the sampler's
+            # per-instance RNG to the global determinism story without
+            # making every sampler re-discover the trainer config.
+            if (
+                self.trainer_config.seed is not None
+                and self.sampler_config._params.get("seed") is None
+            ):
+                self.sampler_config._params["seed"] = self.trainer_config.seed
             self.sampler = SAMPLERS.get(self.env.sampler)(self.sampler_config, self.train_dataset)
 
         if self.trainer_config.freeze_patterns or self.trainer_config.freeze_except:
