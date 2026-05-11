@@ -1,0 +1,22 @@
+# IdentificationEvaluator layout for the Cattely cattle face dataset
+# (https://github.com/.../Cattely-Cattle-Face-Images-Dataset). EVAL ONLY —
+# this dataset is not used in training; the SDK was trained on the ceia_*
+# splits and we measure transfer to a third-party frontal-cow benchmark.
+#
+# Each of the 45 cattle IDs (the source has 47; we drop the `valid/` YOLO
+# detection folder and `s1806`, which only ships 1 image) is split 50/50
+# stratified — half its frames go to the gallery, the other half to the
+# probe — so gallery and probe share the SAME identity set but disjoint
+# images. Smallest classes (sn15, s8816, s1918 with 4 imgs) get 2/2.
+#
+# Built by:
+#   uv run python scripts/split_dataset.py \
+#       --src ./datasets/cattely_clean \
+#       --dst ./datasets/cattely_split --val-frac 0.5 --seed 42
+#   uv run python scripts/build_eval_layout.py \
+#       --src ./datasets/cattely_split \
+#       --dst ./datasets/cattely_identification_eval \
+#       --gallery-split train --probe-split val
+#
+# Totals:  45 classes / 642 gallery imgs / 643 probe imgs
+eval_dir: "./datasets/cattely_identification_eval"

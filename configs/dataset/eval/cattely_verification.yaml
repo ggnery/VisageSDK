@@ -1,0 +1,38 @@
+# Verification eval (TAR@FAR / ROC-AUC / EER / LFW-style accuracy) for the
+# Cattely cattle face dataset. EVAL ONLY — no training on this set.
+#
+# ABSOLUTE-CEILING protocol: every unique positive pair AND every unique
+# cross-class image pair across the 45 retained identities. Statistically
+# you cannot do better than this on a fixed test set without collecting
+# more images.
+#
+# Built by:
+#   uv run python scripts/build_verification_pairs.py \
+#       --src ./datasets/cattely_clean \
+#       --dst ./datasets/cattely_verification_pairs \
+#       --n-folds 10 --exhaustive --exhaustive-negatives
+#
+# Header is the 3-token asymmetric form `<n_folds> <n_same> <n_diff>` that
+# LFWPairsDataset parses transparently. Totals:
+#   22,089 possible positives (all C(k,2) within each class)
+#       → 22,080 used (9 dropped to keep folds balanced)
+#   802,881 possible negatives (every cross-class image pair)
+#       → 802,880 used (1 dropped for fold balance)
+#   Grand total: 824,960 pairs   (10 folds × 2,208 same + 80,288 diff)
+#
+# TAR@FAR resolution:
+#   - 1e-3 → ~800 negs at threshold (extremely clean)
+#   - 1e-4 → ~80  (clean)
+#   - 1e-5 → ~8   (apertado — ceiling of what 1,285 frontal-cow images
+#                   can give without collecting more data)
+#   - 1e-6 → 0    (not measurable on this dataset)
+#
+# Caveats:
+#   - Raw `lfw_accuracy` is class-imbalanced (most pairs are negatives;
+#     chuting "different" sempre dá altíssima accuracy). Trust EER,
+#     TAR@FAR, and ROC-AUC.
+#   - Verification eval can take several minutes on this dataset
+#     (~825k pairs × the ROC threshold sweep). Identification eval
+#     (cattely_identification.yaml) is much faster.
+eval_dir: "./datasets/cattely_verification_pairs"
+pairs_path: "./datasets/cattely_verification_pairs/pairs.txt"
