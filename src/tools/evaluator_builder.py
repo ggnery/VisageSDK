@@ -98,10 +98,31 @@ class EvaluatorBuilder:
             self.backbone.to(device)
 
         if "backbone_state_dict" in ckpt:
-            result = self.backbone.load_state_dict(ckpt["backbone_state_dict"], strict=False)
+            sd_to_load = ckpt["backbone_state_dict"]
         else:
             # raw state dict
-            result = self.backbone.load_state_dict(ckpt, strict=False)
+            sd_to_load = ckpt
+        # Catch the silent-drop trap: a checkpoint saved from a PEFT-wrapped
+        # backbone has keys like `base_model.model.*.weight`. Without
+        # `lora_config` metadata (i.e., before scripts/backfill_lora_config.py
+        # was run or before the wrap-aware save), we land here without
+        # having rebuilt the wrap — and strict=False would happily drop
+        # every key, leaving the backbone at random init while reporting
+        # a deceptive ~85% LFW accuracy. Detect the prefix explicitly and
+        # tell the user how to recover.
+        if lora_config is None and any(
+            k.startswith("base_model.model.") for k in sd_to_load
+        ):
+            raise ValueError(
+                f"Checkpoint at {self.env.checkpoint_path} has PEFT-prefixed "
+                "state_dict keys (`base_model.model.*`) but no `lora_config` "
+                "metadata. Loading with strict=False would silently drop "
+                "every weight and leave the backbone at random init. "
+                "Run `scripts/backfill_lora_config.py --run-dir <run>` to "
+                "inject the missing metadata, or re-save the checkpoint "
+                "with the LoRA-aware Trainer."
+            )
+        result = self.backbone.load_state_dict(sd_to_load, strict=False)
         if result.missing_keys or result.unexpected_keys:
             print(
                 f"[EvaluatorBuilder] state_dict load: "

@@ -716,6 +716,101 @@ class TestLoRAIntegration:
         assert Trainer._peek_is_lora_wrapped(bare_path) is False
         assert Trainer._peek_is_lora_wrapped(lora_path) is True
 
+    def test_periodic_eval_every_n_zero_does_not_crash(self, tiny_train_setup):
+        """B-2 regression: `every_n_epochs: 0` would crash
+        `_maybe_run_periodic_eval` at `self.epoch % every_n` with
+        ZeroDivisionError, killing training mid-loop. Post-fix the
+        bogus value is coerced to 1 (every epoch) so training survives."""
+        from unittest.mock import MagicMock
+
+        from tools.trainer_builder import TrainerBuilder
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+
+        fake = MagicMock()
+        fake.evaluate.return_value = {"acc": 0.5}
+        trainer.periodic_evaluator = fake
+        trainer.epoch = 1
+        trainer.config._params["periodic_eval"] = {"every_n_epochs": 0}  # type: ignore[attr-defined]
+        trainer.config.periodic_eval = {"every_n_epochs": 0}
+
+        # Pre-fix: ZeroDivisionError. Post-fix: ran, returned the dict.
+        out = trainer._maybe_run_periodic_eval()
+        assert out is not None and out.get("acc") == 0.5
+
+    def test_best_val_loss_persisted_across_resume(self, tiny_train_setup, tmp_path):
+        """B-3 regression: `best_val_loss` must survive a resume from a
+        NON-best checkpoint (e.g., a frequency-saved `epoch_N.pth` whose
+        own val_loss is higher than the running best). Pre-fix the field
+        wasn't saved, and `load_checkpoint` initialized it from the
+        checkpoint's `val_loss` — losing the real best."""
+        import torch
+
+        from tools.trainer_builder import TrainerBuilder
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+
+        # Simulate: best at val_loss=0.3, but we save a later "frequency"
+        # checkpoint at val_loss=0.8 (worse).
+        trainer.best_val_loss = 0.3
+        trainer.save_checkpoint(0.9, 0.8, "freq.pth")
+        freq_path = Path(tiny_train_setup["_ckpt_dir"]) / "freq.pth"
+
+        # The persisted field should carry the running best (0.3), not the
+        # checkpoint's own val_loss (0.8).
+        saved = torch.load(freq_path, map_location="cpu", weights_only=False)
+        assert saved["best_val_loss"] == pytest.approx(0.3)
+
+        # Now point a fresh trainer at the checkpoint and resume. The
+        # restored best must be 0.3, not 0.8.
+        cfg_dir = Path(tiny_train_setup["_cfg_dir"])
+        trainer_yaml_path = cfg_dir / "trainer.yaml"
+        data = yaml.safe_load(trainer_yaml_path.read_text())
+        data["checkpoint"]["save"]["dir"] = str(tmp_path / "resume_ckpt")
+        data["checkpoint"]["load"]["path"] = str(freq_path)
+        trainer_yaml_path.write_text(yaml.safe_dump(data))
+
+        env2 = _build_env(tiny_train_setup)
+        trainer2 = TrainerBuilder(env2).build_trainer()
+        assert trainer2.best_val_loss == pytest.approx(0.3), (
+            "B-3 regression: resume should restore the running best (0.3), "
+            f"got {trainer2.best_val_loss}"
+        )
+
+    def test_best_val_loss_legacy_checkpoint_falls_back_to_val_loss(
+        self, tiny_train_setup, tmp_path
+    ):
+        """Backward compat for B-3 fix: a checkpoint saved BEFORE the
+        `best_val_loss` field existed should still load — falling back to
+        `val_loss` (the legacy semantics) so old runs don't break."""
+        import torch
+
+        from tools.trainer_builder import TrainerBuilder
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        trainer.save_checkpoint(0.0, 0.42, "legacy.pth")
+        legacy_path = Path(tiny_train_setup["_ckpt_dir"]) / "legacy.pth"
+
+        # Strip the new field to emulate a pre-fix checkpoint.
+        saved = torch.load(legacy_path, map_location="cpu", weights_only=False)
+        del saved["best_val_loss"]
+        torch.save(saved, legacy_path)
+
+        cfg_dir = Path(tiny_train_setup["_cfg_dir"])
+        trainer_yaml_path = cfg_dir / "trainer.yaml"
+        data = yaml.safe_load(trainer_yaml_path.read_text())
+        data["checkpoint"]["save"]["dir"] = str(tmp_path / "legacy_resume")
+        data["checkpoint"]["load"]["path"] = str(legacy_path)
+        trainer_yaml_path.write_text(yaml.safe_dump(data))
+
+        env2 = _build_env(tiny_train_setup)
+        trainer2 = TrainerBuilder(env2).build_trainer()
+        # Legacy fallback: best = the checkpoint's saved val_loss.
+        assert trainer2.best_val_loss == pytest.approx(0.42)
+
     def test_onnx_export_does_not_mutate_training_state(self, tiny_train_setup):
         """The deepcopy + merge_and_unload path must leave the live
         backbone (still being trained) untouched. Otherwise resuming after

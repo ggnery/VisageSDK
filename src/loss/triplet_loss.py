@@ -171,10 +171,12 @@ class TripletLoss(BaseLoss):
         # Get distances from anchor to all other samples
         anchor_distances = distances[anchor_idx]
 
-        # Find candidates (different identity from anchor)
+        # Find candidates (different identity from anchor). `labels` is
+        # already on `self.device` (the trainer moves the batch up-front
+        # in train_epoch / validate_epoch), so `torch.where` returns
+        # device-side indices — no extra `.to(self.device)` needed.
         different_identity_mask = labels != anchor_label
         candidate_indices = torch.where(different_identity_mask)[0]
-        candidate_indices = candidate_indices.to(self.device)
 
         if len(candidate_indices) == 0:
             return None

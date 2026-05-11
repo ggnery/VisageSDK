@@ -10,17 +10,32 @@ class VGGFace2TrainTransformation(BaseTransformation):
     @override
     def build_transformation(self, cfg: TransformationConfig) -> list:
         train = cfg.train
-        return [
+        # Mirror CasiaWebFaceTrainTransformation's defensive pattern: apply
+        # each augmentation only when the YAML actually declares it, instead
+        # of crashing with KeyError when a user trims `random_rotation` /
+        # `color_jitter` out of the YAML. Keeps the two train transforms
+        # consistent so users can swap between them without surprise edits.
+        layers: list = [
             transforms.RandomHorizontalFlip(p=train["random_horizontal_flip"]),
-            transforms.RandomRotation(degrees=train["random_rotation"]),
-            transforms.ColorJitter(
-                brightness=train["color_jitter"]["brightness"],
-                contrast=train["color_jitter"]["contrast"],
-                saturation=train["color_jitter"]["saturation"],
-            ),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=train["normalize"]["mean"], std=train["normalize"]["std"]),
         ]
+        if "random_rotation" in train and train["random_rotation"]:
+            layers.append(transforms.RandomRotation(degrees=train["random_rotation"]))
+        if "color_jitter" in train and train["color_jitter"]:
+            jitter = train["color_jitter"]
+            layers.append(
+                transforms.ColorJitter(
+                    brightness=jitter.get("brightness", 0.0),
+                    contrast=jitter.get("contrast", 0.0),
+                    saturation=jitter.get("saturation", 0.0),
+                )
+            )
+        layers.extend(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(mean=train["normalize"]["mean"], std=train["normalize"]["std"]),
+            ]
+        )
+        return layers
 
 
 class VGGFace2ValTransformation(BaseTransformation):

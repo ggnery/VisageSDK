@@ -475,6 +475,11 @@ class Trainer:
         if self.periodic_evaluator is None:
             return None
         every_n = (self.config.periodic_eval or {}).get("every_n_epochs", 1)
+        # Guard against the `every_n_epochs: 0` YAML mistake, which would
+        # crash the modulo below with ZeroDivisionError mid-training.
+        # Treat 0 as "every epoch" (the most useful interpretation).
+        if not every_n or every_n <= 0:
+            every_n = 1
         if self.epoch % every_n != 0 and self.epoch != self.num_epochs:
             return None
         self.logger.info(f"Running periodic eval at epoch {self.epoch}")
@@ -515,6 +520,13 @@ class Trainer:
             "epoch": self.epoch,
             "train_loss": train_loss,
             "val_loss": val_loss,
+            # Persist the running best so resuming from a NON-best
+            # checkpoint (e.g. epoch_15.pth saved by frequency) doesn't
+            # wipe out the actual best (e.g. lower val_loss at epoch 10).
+            # Without this, `load_checkpoint` set best_val_loss to
+            # `val_loss`, and any subsequent val_loss < that resume-point
+            # value was wrongly flagged as a new "best".
+            "best_val_loss": self.best_val_loss,
             "backbone_state_dict": self.backbone.state_dict(),
             "loss_state_dict": self.loss.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
@@ -684,9 +696,17 @@ class Trainer:
             self.scaler.load_state_dict(checkpoint["scaler_state_dict"])
 
         self.epoch = int(checkpoint.get("epoch", 0)) + 1
-        # `val_loss` defaults to +inf so any first-epoch val_loss becomes
-        # the new best — same semantics as a fresh run.
-        self.best_val_loss = float(checkpoint.get("val_loss", float("inf")))
+        # Prefer the persisted running-best when present (B-3 fix). Falling
+        # back to the checkpoint's own `val_loss` keeps backward
+        # compatibility with checkpoints saved before this field existed —
+        # at the cost of the same "non-best resume forgets the real best"
+        # behavior the field was added to prevent, but only for legacy
+        # checkpoints. New runs from this point forward persist
+        # `best_val_loss` directly. `float("inf")` as the final fallback
+        # mirrors a fresh run (any val_loss becomes the new best).
+        self.best_val_loss = float(
+            checkpoint.get("best_val_loss", checkpoint.get("val_loss", float("inf")))
+        )
 
         bb_name = self.backbone.__class__.__name__
         self.logger.info(f"Checkpoint {checkpoint_path} for backbone {bb_name} successfully loaded")
