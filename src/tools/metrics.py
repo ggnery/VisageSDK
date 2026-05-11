@@ -1,11 +1,6 @@
-"""Pure metric functions for face recognition evaluation.
+"""Metric functions for verification (pair-based) and identification (gallery/probe).
 
-Verification: pair-based binary task (same/different).
-Identification: gallery/probe retrieval task (rank-N, mAP, CMC).
-
-All functions accept torch tensors or numpy arrays. Embeddings are assumed
-unnormalized; distance/similarity helpers L2-normalize internally when
-the cosine metric is used.
+Embeddings are assumed unnormalized; cosine helpers L2-normalize internally.
 """
 
 import numpy as np
@@ -117,15 +112,13 @@ def eer(distances: np.ndarray, labels: np.ndarray) -> tuple[float, float]:
 
 
 def tar_at_far(distances: np.ndarray, labels: np.ndarray, far_target: float) -> tuple[float, float]:
-    """True Accept Rate at a target False Accept Rate.
+    """True Accept Rate at a target FAR. Returns (tar, threshold).
 
-    Returns (tar, threshold). Picks the highest threshold (strictest) whose
-    FAR <= far_target. If no threshold meets it, returns (0, min_threshold).
+    The smallest swept threshold yields FAR=0 by construction, so at least
+    one candidate always satisfies fpr<=far_target for any positive target.
     """
     fpr, tpr, thresholds = roc_curve(distances, labels, n_thresholds=2000)
     valid = fpr <= far_target
-    if not valid.any():
-        return 0.0, float(thresholds[0])
     idx_candidates = np.where(valid)[0]
     best = idx_candidates[np.argmax(tpr[idx_candidates])]
     return float(tpr[best]), float(thresholds[best])
@@ -163,11 +156,12 @@ def lfw_kfold_accuracy(
         thresholds.append(thr)
     accs = np.array(accuracies)
     thrs = np.array(thresholds)
+    # ddof=1 matches the LFW community's reported 10-fold protocol.
     return {
         "accuracy_mean": float(accs.mean()) if len(accs) else 0.0,
-        "accuracy_std": float(accs.std()) if len(accs) else 0.0,
+        "accuracy_std": float(accs.std(ddof=1)) if len(accs) > 1 else 0.0,
         "threshold_mean": float(thrs.mean()) if len(thrs) else 0.0,
-        "threshold_std": float(thrs.std()) if len(thrs) else 0.0,
+        "threshold_std": float(thrs.std(ddof=1)) if len(thrs) > 1 else 0.0,
     }
 
 

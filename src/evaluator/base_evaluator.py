@@ -39,11 +39,6 @@ class BaseEvaluator(ABC):
 
     @abstractmethod
     def evaluate(self) -> dict[str, Any]:
-        """Run evaluation. Returns a dict of metric_name -> value.
-
-        Most entries are scalar (float / int). Evaluators MAY include nested
-        structures (e.g. `{"roc_curve": {"fpr": [...], "tpr": [...]}}`) for
-        downstream plotting; eval.py and the GUI render scalars and
-        non-scalars separately.
-        """
+        """Return {metric_name: value}. Scalars or nested structures (e.g.
+        `{"roc_curve": {"fpr": [...], "tpr": [...]}}`) are both allowed."""
         raise NotImplementedError

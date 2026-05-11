@@ -1,20 +1,7 @@
 """LoRA / PEFT integration helpers.
 
-Wraps the framework's existing backbone with a `peft` LoraConfig adapter.
-The underlying base weights are frozen by PEFT; only the lora_A / lora_B
-parameters per target module are trainable.
-
-Why a thin wrapper instead of writing LoRA from scratch:
-- `peft` is the de facto standard, well-tested by HuggingFace.
-- Saving / composing adapters comes for free (`save_pretrained`,
-  `set_adapter`, `add_adapter`).
-- We keep a single integration point so the rest of the trainer pipeline
-  doesn't need to know about LoRA.
-
-LoRA must be applied AFTER the base checkpoint is loaded — once the model
-is wrapped, parameter keys gain `base_model.model.` prefixes that don't
-match the source state_dict. The Trainer hooks LoRA in right after
-load_checkpoint and rebuilds the optimizer to capture the new params.
+Wraps a backbone with PEFT's LoraConfig. Apply AFTER loading the base
+checkpoint — wrapping renames parameters to `base_model.model.*`.
 """
 
 from __future__ import annotations
@@ -34,35 +21,12 @@ def apply_lora(
     dropout: float = 0.0,
     modules_to_save: list[str] | None = None,
 ) -> PeftModel:
-    """Wrap `model` with a LoRA adapter and return the PEFT-wrapped model.
+    """Wrap `model` with a LoRA adapter (PEFT). Effective scaling = alpha / rank.
 
-    Args:
-        model: A built backbone (any nn.Module). Its weights stay; PEFT
-            inserts LoRA layers on the targeted submodules and freezes
-            everything else.
-        rank: The LoRA rank (typical: 4–16). Lower rank = fewer trainable
-            params, slightly less expressivity.
-        alpha: LoRA scaling factor; the effective LoRA contribution is
-            alpha / rank. Common defaults: alpha = 2 * rank.
-        target_modules: Module names or fnmatch-style patterns that PEFT
-            should wrap. Examples: ["last_linear", "block8.branch1.0.conv"].
-        dropout: Dropout applied to the LoRA path. 0 disables.
-        modules_to_save: Optional list of modules PEFT should fully fine-
-            tune (full update of weights, not LoRA-style). Useful for the
-            final embedding projection layers where adapter-only deltas
-            aren't expressive enough to reshape the output space for a
-            new domain (e.g., a face-pretrained feature head adapting to
-            cattle re-id).
-
-    Returns:
-        A `peft.PeftModel`. Attribute access proxies to the base model, so
-        existing code that reads `backbone.embedding_size` etc. keeps
-        working transparently.
+    `modules_to_save` lists modules to fully fine-tune (not LoRA-adapt) —
+    useful for the embedding head when adapter deltas aren't enough.
     """
-    # peft's stubs declare lora_alpha as int and only accept transformers'
-    # PreTrainedModel, but at runtime both float and any nn.Module work
-    # fine (the latter is the documented "wrap any model" path). Casting
-    # silences the static checker without changing behavior.
+    # PEFT stubs over-restrict lora_alpha type and the model type; runtime is fine.
     config = LoraConfig(
         r=rank,
         lora_alpha=int(alpha) if alpha == int(alpha) else alpha,  # type: ignore[arg-type]
@@ -76,9 +40,7 @@ def apply_lora(
 
 
 def lora_trainable_summary(model: nn.Module) -> tuple[int, int]:
-    """Return (trainable, total) parameter counts for a (possibly LoRA-
-    wrapped) model. Mirrors the freezer's `freeze_summary` semantics so
-    log lines stay consistent with the rest of the framework."""
+    """Return (trainable, total) parameter counts."""
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total = sum(p.numel() for p in model.parameters())
     return trainable, total

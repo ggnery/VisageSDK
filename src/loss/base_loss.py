@@ -17,13 +17,5 @@ class BaseLoss(nn.Module):
         self.to(self.device)
 
     def forward(self, embeddings: torch.Tensor, y_true: torch.Tensor) -> tuple[torch.Tensor, dict]:
-        """Override to compute the loss.
-
-        Args:
-            embeddings: tensor (batch_size x embedding_size)
-            y_true: ground-truth class index per embedding
-
-        Returns:
-            (loss_tensor, loss_stats_dict)
-        """
+        """Override to return (loss_tensor, loss_stats_dict)."""
         raise NotImplementedError()

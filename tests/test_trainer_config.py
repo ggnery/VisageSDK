@@ -217,3 +217,61 @@ class TestOptimizerParamGroups:
             str(trainer_yaml({"optimizer": {"type": "SGD", "params": {"lr": 0.01}, "param_groups": groups}}))
         )
         assert cfg.optimizer_param_groups == groups
+
+
+class TestLoRAConflicts:
+    """Regression: LoRA's PEFT wrap renames every parameter and freezes
+    the base, so `freeze.*`, `freeze.unfreeze_at_epoch`, and
+    `optimizer.param_groups` either silently no-op or get overwritten.
+    The config layer rejects these combos up front (rather than letting
+    them produce confusing runtime behavior)."""
+
+    _LORA = {
+        "enabled": True,
+        "target_modules": ["last_linear"],
+    }
+
+    def test_lora_plus_freeze_patterns_raises(self, trainer_yaml):
+        with pytest.raises(ValueError, match="freeze"):
+            TrainerConfig(
+                str(trainer_yaml({"lora": self._LORA, "freeze": {"patterns": ["features.*"]}}))
+            )
+
+    def test_lora_plus_freeze_except_raises(self, trainer_yaml):
+        with pytest.raises(ValueError, match="freeze"):
+            TrainerConfig(
+                str(trainer_yaml({"lora": self._LORA, "freeze": {"except": ["last_linear*"]}}))
+            )
+
+    def test_lora_plus_unfreeze_schedule_raises(self, trainer_yaml):
+        with pytest.raises(ValueError, match="unfreeze_at_epoch"):
+            TrainerConfig(
+                str(
+                    trainer_yaml(
+                        {"lora": self._LORA, "freeze": {"unfreeze_at_epoch": {3: ["features.*"]}}}
+                    )
+                )
+            )
+
+    def test_lora_plus_param_groups_raises(self, trainer_yaml):
+        with pytest.raises(ValueError, match="param_groups"):
+            TrainerConfig(
+                str(
+                    trainer_yaml(
+                        {
+                            "lora": self._LORA,
+                            "optimizer": {
+                                "type": "SGD",
+                                "params": {"lr": 0.01},
+                                "param_groups": [{"pattern": "loss.*", "lr": 1e-3}],
+                            },
+                        }
+                    )
+                )
+            )
+
+    def test_lora_without_conflicts_passes(self, trainer_yaml):
+        # The existing canonical lora_finetune.yaml shape: no freeze, no
+        # param_groups, just LoRA. Must still parse cleanly.
+        cfg = TrainerConfig(str(trainer_yaml({"lora": self._LORA})))
+        assert cfg.lora_enabled is True

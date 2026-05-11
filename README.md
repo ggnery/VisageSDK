@@ -102,10 +102,11 @@ The GUI lets you pick components, edit their YAMLs inline, launch training, watc
 uv run streamlit run gui/app.py
 ```
 
-It exposes three tabs:
+It exposes four tabs:
 
 - **Configure & Train** — registry-backed dropdowns for every component, inline YAML editors, quick overrides for `num_epochs` / `device` / `seed` / AMP / TensorBoard, and an optional `periodic_eval` block. Clicking *Launch Training* snapshots the YAMLs into `runs/<timestamp>/configs/` and spawns `train.py`.
-- **Monitor** — picks a run and reads the trainer's TensorBoard events live: loss/lr/eval/train_stats/val_stats line charts plus the tail of `train.log`. Auto-refresh and a Stop button are built in.
+- **Monitor Train** — picks a training run and reads the trainer's TensorBoard events live: loss/lr/eval/train_stats/val_stats line charts plus the tail of `train.log`. Auto-refresh and a Stop button are built in.
+- **Monitor Eval** — picks an eval run and renders the JSON metric bundle (headline cards, ROC curve, score distributions) plus the tail of `eval.log`.
 - **Evaluate** — picks a checkpoint and runs `eval.py` against any registered evaluator, displaying the JSON results.
 
 ## Project layout
@@ -167,7 +168,7 @@ The trainer uses a slightly richer config (`TrainerConfig`) because it has struc
 
 | Kind | Registered names |
 | --- | --- |
-| Backbones | `inception_resnet_v1`, `inception_resnet_v2`, `inception_v4`, `mobilenetv3` |
+| Backbones | `inception_resnet_v1`, `inception_resnet_v2`, `inception_v4`, `mobilenetv3`, `lvface_vit_b` |
 | Losses | `triplet`, `center`, `cross_entropy`, `margin_cosine` |
 | Train/val datasets | `image_folder` (single class with `split="train"`/`"val"`) |
 | Eval datasets | `lfw_pairs`, `identification` |
@@ -241,7 +242,7 @@ periodic_eval:
   every_n_epochs: 5
   dataset: lfw_pairs
   dataset_config: ./configs/dataset/eval/lfw_pairs.yaml
-  transformation: lfw
+  transformation: lfw_eval
   transformation_config: ./configs/transformation/eval/lfw.yaml
   evaluator: verification
   evaluator_config: ./configs/evaluator/lfw_verification.yaml
@@ -272,7 +273,7 @@ CHECKPOINT_PATH=./checkpoints/.../best.pth
 EVAL_DATASET=lfw_pairs                  # or identification
 EVAL_DATASET_CONFIG=./configs/dataset/eval/lfw_pairs.yaml
 
-EVAL_TRANSFORMATION=lfw
+EVAL_TRANSFORMATION=lfw_eval
 EVAL_TRANSFORMATION_CONFIG=./configs/transformation/eval/lfw.yaml
 
 EVALUATOR=verification                  # or identification
@@ -293,7 +294,7 @@ Reads the standard LFW `pairs.txt` format (`<n_folds> <n_pairs_per_fold>` header
 - `lfw_threshold_mean` — average threshold picked across folds
 - `best_threshold_global` / `best_accuracy_global` — single threshold over the whole set
 - `roc_auc`, `eer` (+ threshold)
-- `tar@far=1e-3`, `tar@far=1e-4`, `tar@far=1e-5`, `tar@far=1e-6` (`far_targets` configurable per evaluator YAML)
+- `tar@far=1e-03`, `tar@far=1e-04`, `tar@far=1e-05`, `tar@far=1e-06` (`far_targets` configurable per evaluator YAML)
 
 ### Identification metrics (`evaluator: identification`, dataset: `identification`)
 

@@ -60,3 +60,42 @@ class TestAdaptativeEarlyStopper:
         for _ in range(3):
             es.early_stop(1.0)
         assert es.dynamic_patience > es.base_patience
+
+    def test_stops_eventually_with_ratio_below_one(self, make_stopper):
+        """Regression for B-1: with `patience_increase_ratio < 1` the
+        pre-fix grew `dynamic_patience` once per epoch in lockstep with
+        `wait_count`, so the stop condition `wait_count >= dynamic_patience`
+        was never reached and the early stopper silently never triggered.
+        Post-fix the bump is one-shot (when `wait_count` first crosses the
+        threshold) so eventually `wait_count` catches up and we stop."""
+        es = make_stopper(base_patience=5, delta=0.01, patience_increase_ratio=0.8)
+        es.early_stop(1.0)  # baseline
+        stopped = False
+        # 20 flat steps is well above any plausible grace window;
+        # the pre-fix loop runs forever, post-fix stops at wait≈6.
+        for _ in range(20):
+            if es.early_stop(1.0):
+                stopped = True
+                break
+        assert stopped, (
+            "B-1 regression: with patience_increase_ratio < 1 the stopper "
+            "never triggers because dynamic_patience grows every epoch."
+        )
+
+    def test_dynamic_patience_is_one_shot_not_per_epoch(self, make_stopper):
+        """Once `wait_count` crosses the bump threshold, `dynamic_patience`
+        must NOT keep growing each subsequent epoch — otherwise wait can
+        never catch up. The bump fires at most once per "no improvement
+        run" and resets on improvement."""
+        es = make_stopper(base_patience=4, delta=0.01, patience_increase_ratio=0.5)
+        es.early_stop(1.0)  # baseline; threshold = 4*0.5 = 2
+        # Below threshold: no bump.
+        es.early_stop(1.0)  # wait=1
+        assert es.dynamic_patience == es.base_patience
+        # Cross threshold: bump once.
+        es.early_stop(1.0)  # wait=2
+        bumped = es.dynamic_patience
+        assert bumped > es.base_patience
+        # Past threshold: dynamic_patience stays the same.
+        es.early_stop(1.0)  # wait=3
+        assert es.dynamic_patience == bumped

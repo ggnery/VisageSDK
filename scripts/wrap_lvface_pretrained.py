@@ -27,18 +27,20 @@ def wrap(src: Path, dst: Path) -> None:
     if not isinstance(state_dict, dict):
         raise TypeError(f"Expected a state_dict (dict), got {type(state_dict).__name__}")
 
+    # Unwrap upstream "state_dict" / "model" containers FIRST so the
+    # `backbone_state_dict` check below operates on the actual tensors,
+    # not the wrapper. A checkpoint like `{"model": {"backbone_state_dict": ...}}`
+    # would otherwise slip past the guard.
+    for outer in ("state_dict", "model"):
+        if outer in state_dict and isinstance(state_dict[outer], dict):
+            state_dict = state_dict[outer]
+            break
+
     if "backbone_state_dict" in state_dict:
         raise ValueError(
             f"{src} already looks like a wrapped framework checkpoint "
             "(has 'backbone_state_dict' key). Nothing to do."
         )
-
-    # Some upstream releases wrap the actual state_dict under "state_dict"
-    # or "model" — unwrap if needed.
-    for outer in ("state_dict", "model"):
-        if outer in state_dict and isinstance(state_dict[outer], dict):
-            state_dict = state_dict[outer]
-            break
 
     checkpoint = {
         "epoch": 0,

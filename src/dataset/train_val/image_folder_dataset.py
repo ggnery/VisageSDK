@@ -12,7 +12,7 @@ def _scan_dir(root: Path) -> list[tuple[str, str]]:
     if not root.exists():
         raise FileNotFoundError(f"Dataset directory not found: {root}")
     pairs: list[tuple[str, str]] = []
-    # Sort both class dirs and image files so label IDs are reproducible across machines / filesystems.
+    # Sort for reproducible label IDs across machines.
     for class_dir in sorted(root.iterdir()):
         if not class_dir.is_dir():
             continue
@@ -20,6 +20,13 @@ def _scan_dir(root: Path) -> list[tuple[str, str]]:
             if img_file.is_file() and img_file.suffix.lower() in _VALID_EXTS:
                 pairs.append((class_dir.name, str(img_file.absolute())))
     return pairs
+
+
+def _scan_class_names(root: Path) -> list[str]:
+    """Return the sorted class-dir names directly under `root`."""
+    if not root.exists():
+        raise FileNotFoundError(f"Dataset directory not found: {root}")
+    return sorted(d.name for d in root.iterdir() if d.is_dir())
 
 
 class ImageFolderDataset(BaseTrainValDataset):
@@ -39,3 +46,10 @@ class ImageFolderDataset(BaseTrainValDataset):
     def read_data(self, dataset_config: TrainValDatasetConfig) -> list[tuple[str, str]]:
         target = dataset_config.train_dir if self._split == "train" else dataset_config.val_dir
         return _scan_dir(Path(target))
+
+    @override
+    def read_all_labels(self, dataset_config: TrainValDatasetConfig) -> list[str]:
+        labels: set[str] = set()
+        for split_dir in (dataset_config.train_dir, dataset_config.val_dir):
+            labels.update(_scan_class_names(Path(split_dir)))
+        return sorted(labels)

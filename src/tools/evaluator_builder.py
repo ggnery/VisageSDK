@@ -51,24 +51,17 @@ class EvaluatorBuilder:
 
         ckpt = torch.load(self.env.checkpoint_path, map_location=device, weights_only=False)
 
-        # If the checkpoint was saved from a PEFT-wrapped backbone, every
-        # tensor key has a `base_model.model.*` prefix. Without rebuilding
-        # the wrap before loading, strict=False would silently drop every
-        # key and we'd score a randomly-initialized backbone — which used
-        # to pass for "trained model" with a deceptive ~85% LFW accuracy.
-        # The trainer persists `lora_config` precisely to make this
-        # reconstruction possible.
+        # Rebuild the PEFT wrap before loading so `base_model.model.*` keys match.
+        # Without this, strict=False silently drops every weight (random init →
+        # deceptive ~85% LFW accuracy).
         lora_config = ckpt.get("lora_config") if isinstance(ckpt, dict) else None
         if lora_config:
             from tools.lora import apply_lora
 
             target_modules = list(lora_config.get("target_modules", []))
 
-            # If the user picks a backbone variant in the GUI that doesn't
-            # contain ANY of the targeted modules, PEFT raises a cryptic
-            # `Target modules X not found in the base model.` deep in its
-            # internals. Detect the obvious mismatch up front so the error
-            # message points at the actual fix (pick the right backbone).
+            # Detect backbone/target_modules mismatch up front (PEFT's own error
+            # message is cryptic).
             backbone_module_names = {name for name, _ in self.backbone.named_modules()}
             matched = any(
                 any(
@@ -79,12 +72,10 @@ class EvaluatorBuilder:
             )
             if not matched:
                 raise ValueError(
-                    f"Checkpoint at {self.env.checkpoint_path} was saved with "
-                    f"lora_config.target_modules={target_modules}, but the "
-                    f"selected backbone variant '{self.env.backbone}' (class "
-                    f"{type(self.backbone).__name__}) contains no matching "
-                    "modules. Pick the backbone variant the checkpoint was "
-                    "trained on (likely lvface_vit_b vs inception_resnet_v1)."
+                    f"Checkpoint {self.env.checkpoint_path} has "
+                    f"lora_config.target_modules={target_modules}, but selected "
+                    f"backbone '{self.env.backbone}' contains no matching modules. "
+                    "Pick the backbone variant the checkpoint was trained on."
                 )
 
             self.backbone = apply_lora(
@@ -97,11 +88,19 @@ class EvaluatorBuilder:
             )
             self.backbone.to(device)
 
-        if "backbone_state_dict" in ckpt:
-            result = self.backbone.load_state_dict(ckpt["backbone_state_dict"], strict=False)
-        else:
-            # raw state dict
-            result = self.backbone.load_state_dict(ckpt, strict=False)
+        # `backbone_state_dict` present → framework-wrapped; absent → raw state_dict.
+        sd_to_load = ckpt.get("backbone_state_dict", ckpt)
+        # Detect PEFT-prefixed keys without `lora_config` metadata — strict=False
+        # would silently drop every weight here.
+        if lora_config is None and any(
+            k.startswith("base_model.model.") for k in sd_to_load
+        ):
+            raise ValueError(
+                f"Checkpoint {self.env.checkpoint_path} has PEFT-prefixed keys "
+                "but no `lora_config` metadata. Run "
+                "`scripts/backfill_lora_config.py --run-dir <run>` to inject it."
+            )
+        result = self.backbone.load_state_dict(sd_to_load, strict=False)
         if result.missing_keys or result.unexpected_keys:
             print(
                 f"[EvaluatorBuilder] state_dict load: "

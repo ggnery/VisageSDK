@@ -142,6 +142,134 @@ class TestTrainerSmoke:
 
 
 # =============================================================================
+# B-10 — device-mismatch detection across YAMLs
+# =============================================================================
+
+
+class TestDeviceMismatch:
+    def test_backbone_cuda_trainer_cpu_raises(self, tiny_train_setup):
+        """Pre-fix, mismatching `device` across backbone/loss/trainer YAMLs
+        silently produced a "tensors on different devices" runtime error
+        deep in the forward pass. Validate up front."""
+        from tools.trainer_builder import TrainerBuilder
+
+        # Patch backbone YAML to claim cuda while the trainer stays on cpu.
+        cfg_dir = Path(tiny_train_setup["_cfg_dir"])
+        bb_path = cfg_dir / "backbone.yaml"
+        bb = yaml.safe_load(bb_path.read_text())
+        bb["device"] = "cuda"
+        bb_path.write_text(yaml.safe_dump(bb))
+
+        env = _build_env(tiny_train_setup)
+        with pytest.raises(ValueError, match="device mismatch"):
+            TrainerBuilder(env)
+
+
+# =============================================================================
+# B-1 — LR scheduler is "ready for next epoch" at checkpoint time
+# =============================================================================
+
+
+class TestSchedulerStateOnSave:
+    def test_saved_scheduler_state_is_post_step(self, tiny_train_setup):
+        """B-1 regression: scheduler.step() must run BEFORE save_checkpoint
+        so that the persisted state matches the LR the next epoch should
+        train at. Pre-fix the order was reversed, and resuming silently
+        trained one schedule-step behind."""
+        from tools.trainer_builder import TrainerBuilder
+
+        # Force the LR to actually decay after epoch 1 so the test catches
+        # a missing step (StepLR with step_size=1, gamma=0.5 → LR halves).
+        cfg_dir = Path(tiny_train_setup["_cfg_dir"])
+        trainer_yaml_path = cfg_dir / "trainer.yaml"
+        data = yaml.safe_load(trainer_yaml_path.read_text())
+        data["num_epochs"] = 1
+        # StepLR with step_size=1, gamma=0.5: starts at 0.01 → after first
+        # step the LR is 0.005.
+        trainer_yaml_path.write_text(yaml.safe_dump(data))
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        initial_lr = float(trainer.scheduler.get_last_lr()[0])
+        trainer.train()
+
+        # After 1 epoch (and the in-loop scheduler.step()), the LR must
+        # have moved off the initial value: post-fix the step runs before
+        # save_checkpoint, so the trainer state already reflects the new
+        # LR by the time `train()` returns.
+        post_train_lr = float(trainer.scheduler.get_last_lr()[0])
+        assert post_train_lr != initial_lr, (
+            f"scheduler didn't step (initial={initial_lr}, after={post_train_lr})"
+        )
+
+        # And the saved checkpoint's scheduler state must reflect that
+        # post-step LR, not the pre-step value.
+        ckpt_dir = Path(tiny_train_setup["_ckpt_dir"])
+        ckpts = sorted(ckpt_dir.glob("*epoch_1.pth"))
+        assert ckpts, "expected epoch_1 checkpoint"
+        saved = torch.load(ckpts[0], map_location="cpu", weights_only=False)
+        opt_sd = saved["optimizer_state_dict"]
+        saved_lr = opt_sd["param_groups"][0]["lr"]
+        assert saved_lr == pytest.approx(post_train_lr), (
+            f"saved optimizer LR {saved_lr} != post-step LR {post_train_lr}; "
+            "B-1 regression: scheduler.step() did NOT run before save_checkpoint."
+        )
+
+
+# =============================================================================
+# B-8 — FacenetBatchSampler seed propagation
+# =============================================================================
+
+
+class TestSamplerSeedPropagation:
+    def test_trainer_seed_propagates_to_sampler_config(self, tiny_train_setup):
+        """B-8 regression: trainer_config.seed must be injected into the
+        sampler config so the sampler's per-instance RNG is deterministic
+        across runs. Without this, the FacenetBatchSampler seeds itself
+        from `random.random()` and the per-epoch identity order shifts
+        whenever any code path in the builder touches the global RNG."""
+        import yaml as _yaml
+
+        from tools.trainer_builder import TrainerBuilder
+
+        cfg_dir = Path(tiny_train_setup["_cfg_dir"])
+        sampler_cfg = cfg_dir / "sampler.yaml"
+        sampler_cfg.write_text(
+            _yaml.safe_dump({"faces_per_identity": 2, "num_identities_per_batch": 2})
+        )
+        # Patch the trainer YAML to drop the explicit batch_size since the
+        # sampler dictates batching.
+        trainer_yaml_path = cfg_dir / "trainer.yaml"
+        data = _yaml.safe_load(trainer_yaml_path.read_text())
+        data["dataloader"]["train"]["batch_size"] = None
+        data["dataloader"]["train"]["shuffle"] = None
+        data["seed"] = 42
+        trainer_yaml_path.write_text(_yaml.safe_dump(data))
+
+        env_dict = {**tiny_train_setup, "SAMPLER": "facenet", "SAMPLER_CONFIG": str(sampler_cfg)}
+        from config.env_config import ENVConfig
+
+        env = ENVConfig(
+            backbone=env_dict["BACKBONE"],
+            backbone_config=env_dict["BACKBONE_CONFIG"],
+            train_val_dataset=env_dict["TRAIN_VAL_DATASET"],
+            train_val_dataset_config=env_dict["TRAIN_VAL_DATASET_CONFIG"],
+            train_transformation=env_dict["TRAIN_TRANSFORMATION"],
+            val_transformation=env_dict["VAL_TRANSFORMATION"],
+            train_val_transformation_config=env_dict["TRAIN_VAL_TRANSFORMATION_CONFIG"],
+            loss=env_dict["LOSS"],
+            loss_config=env_dict["LOSS_CONFIG"],
+            trainer_config=env_dict["TRAINER_CONFIG"],
+            sampler=env_dict["SAMPLER"],
+            sampler_config=env_dict["SAMPLER_CONFIG"],
+        )
+        builder = TrainerBuilder(env)
+        # After build, the sampler config should carry the injected seed.
+        assert builder.sampler_config is not None
+        assert builder.sampler_config._params.get("seed") == 42
+
+
+# =============================================================================
 # B1 — Resume + replay unfreeze
 # =============================================================================
 
@@ -587,6 +715,101 @@ class TestLoRAIntegration:
 
         assert Trainer._peek_is_lora_wrapped(bare_path) is False
         assert Trainer._peek_is_lora_wrapped(lora_path) is True
+
+    def test_periodic_eval_every_n_zero_does_not_crash(self, tiny_train_setup):
+        """B-2 regression: `every_n_epochs: 0` would crash
+        `_maybe_run_periodic_eval` at `self.epoch % every_n` with
+        ZeroDivisionError, killing training mid-loop. Post-fix the
+        bogus value is coerced to 1 (every epoch) so training survives."""
+        from unittest.mock import MagicMock
+
+        from tools.trainer_builder import TrainerBuilder
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+
+        fake = MagicMock()
+        fake.evaluate.return_value = {"acc": 0.5}
+        trainer.periodic_evaluator = fake
+        trainer.epoch = 1
+        trainer.config._params["periodic_eval"] = {"every_n_epochs": 0}  # type: ignore[attr-defined]
+        trainer.config.periodic_eval = {"every_n_epochs": 0}
+
+        # Pre-fix: ZeroDivisionError. Post-fix: ran, returned the dict.
+        out = trainer._maybe_run_periodic_eval()
+        assert out is not None and out.get("acc") == 0.5
+
+    def test_best_val_loss_persisted_across_resume(self, tiny_train_setup, tmp_path):
+        """B-3 regression: `best_val_loss` must survive a resume from a
+        NON-best checkpoint (e.g., a frequency-saved `epoch_N.pth` whose
+        own val_loss is higher than the running best). Pre-fix the field
+        wasn't saved, and `load_checkpoint` initialized it from the
+        checkpoint's `val_loss` — losing the real best."""
+        import torch
+
+        from tools.trainer_builder import TrainerBuilder
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+
+        # Simulate: best at val_loss=0.3, but we save a later "frequency"
+        # checkpoint at val_loss=0.8 (worse).
+        trainer.best_val_loss = 0.3
+        trainer.save_checkpoint(0.9, 0.8, "freq.pth")
+        freq_path = Path(tiny_train_setup["_ckpt_dir"]) / "freq.pth"
+
+        # The persisted field should carry the running best (0.3), not the
+        # checkpoint's own val_loss (0.8).
+        saved = torch.load(freq_path, map_location="cpu", weights_only=False)
+        assert saved["best_val_loss"] == pytest.approx(0.3)
+
+        # Now point a fresh trainer at the checkpoint and resume. The
+        # restored best must be 0.3, not 0.8.
+        cfg_dir = Path(tiny_train_setup["_cfg_dir"])
+        trainer_yaml_path = cfg_dir / "trainer.yaml"
+        data = yaml.safe_load(trainer_yaml_path.read_text())
+        data["checkpoint"]["save"]["dir"] = str(tmp_path / "resume_ckpt")
+        data["checkpoint"]["load"]["path"] = str(freq_path)
+        trainer_yaml_path.write_text(yaml.safe_dump(data))
+
+        env2 = _build_env(tiny_train_setup)
+        trainer2 = TrainerBuilder(env2).build_trainer()
+        assert trainer2.best_val_loss == pytest.approx(0.3), (
+            "B-3 regression: resume should restore the running best (0.3), "
+            f"got {trainer2.best_val_loss}"
+        )
+
+    def test_best_val_loss_legacy_checkpoint_falls_back_to_val_loss(
+        self, tiny_train_setup, tmp_path
+    ):
+        """Backward compat for B-3 fix: a checkpoint saved BEFORE the
+        `best_val_loss` field existed should still load — falling back to
+        `val_loss` (the legacy semantics) so old runs don't break."""
+        import torch
+
+        from tools.trainer_builder import TrainerBuilder
+
+        env = _build_env(tiny_train_setup)
+        trainer = TrainerBuilder(env).build_trainer()
+        trainer.save_checkpoint(0.0, 0.42, "legacy.pth")
+        legacy_path = Path(tiny_train_setup["_ckpt_dir"]) / "legacy.pth"
+
+        # Strip the new field to emulate a pre-fix checkpoint.
+        saved = torch.load(legacy_path, map_location="cpu", weights_only=False)
+        del saved["best_val_loss"]
+        torch.save(saved, legacy_path)
+
+        cfg_dir = Path(tiny_train_setup["_cfg_dir"])
+        trainer_yaml_path = cfg_dir / "trainer.yaml"
+        data = yaml.safe_load(trainer_yaml_path.read_text())
+        data["checkpoint"]["save"]["dir"] = str(tmp_path / "legacy_resume")
+        data["checkpoint"]["load"]["path"] = str(legacy_path)
+        trainer_yaml_path.write_text(yaml.safe_dump(data))
+
+        env2 = _build_env(tiny_train_setup)
+        trainer2 = TrainerBuilder(env2).build_trainer()
+        # Legacy fallback: best = the checkpoint's saved val_loss.
+        assert trainer2.best_val_loss == pytest.approx(0.42)
 
     def test_onnx_export_does_not_mutate_training_state(self, tiny_train_setup):
         """The deepcopy + merge_and_unload path must leave the live

@@ -97,7 +97,7 @@ class TestStateDictKeys:
     def test_has_lvface_compatible_top_level_keys(self, tiny_vit):
         """The LVFace state_dict has these exact prefixes; any deviation
         breaks `strict=True` loads of the published checkpoint."""
-        prefixes = {k.split(".", 1)[0] for k in tiny_vit.state_dict().keys()}
+        prefixes = {k.split(".", 1)[0] for k in tiny_vit.state_dict()}
         # Tiny config uses ln norm + present mask_token; check the contract.
         assert self.EXPECTED_TOP_LEVEL_PREFIXES.issubset(prefixes), (
             f"missing prefixes: {self.EXPECTED_TOP_LEVEL_PREFIXES - prefixes}"

@@ -6,12 +6,10 @@ from transformation.base_transformation import BaseTransformation
 
 
 class BaseEvalDataset(Dataset):
-    """Eval datasets expose a flat list of (label, image_path) tuples.
+    """Eval datasets expose a flat `self.data` list of (label, image_path).
 
-    Concrete subclasses fill `self.data` (and any extra metadata such as
-    pair lists or fold ids). The default __getitem__ returns the encoded
-    image plus its index, which lets evaluators encode each unique image
-    once and look up by index later.
+    `__getitem__` returns (idx, transformed_image) so evaluators can encode
+    each unique image once and look up pairs/groups by index.
     """
 
     data: list[tuple[str, str]]

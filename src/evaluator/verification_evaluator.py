@@ -66,9 +66,8 @@ class VerificationEvaluator(BaseEvaluator):
             results[f"tar@far={far:.0e}"] = tar
             results[f"threshold@far={far:.0e}"] = thr_far
 
-        # ROC curve points so the GUI can plot it. roc_auc/eer/tar_at_far each
-        # recompute the curve internally — that's a few-ms duplication on
-        # ~1k-pair datasets, not worth caching back into them.
+        # ROC points for plotting; redundant with the internal curves computed
+        # above but cheap to recompute on typical pair counts.
         fpr_arr, tpr_arr, thr_arr = roc_curve(distances, labels)
         results["roc_curve"] = {
             "fpr": fpr_arr.tolist(),
@@ -76,10 +75,7 @@ class VerificationEvaluator(BaseEvaluator):
             "thresholds": thr_arr.tolist(),
         }
 
-        # Raw genuine / impostor distance distributions so the GUI can render
-        # the score histogram. Useful for visually diagnosing cluster
-        # tightness — what cross-entropy fails to enforce vs. what margin /
-        # angular losses tighten.
+        # Genuine vs impostor distributions for the GUI score histogram.
         results["score_distributions"] = {
             "genuine": distances[labels == 1].astype(float).tolist(),
             "impostor": distances[labels == 0].astype(float).tolist(),

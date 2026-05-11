@@ -94,16 +94,18 @@ class InceptionA(nn.Module):
             Conv2d(64, 96, 3, stride=1, padding=1, bias=False),
             Conv2d(96, 96, 3, stride=1, padding=1, bias=False),
         )
-        self.brance_3 = nn.Sequential(
+        # branch_3's avg-pool preserves channel count, so use `in_channels`
+        # (not a hardcoded 384) for the projection conv.
+        self.branch_3 = nn.Sequential(
             nn.AvgPool2d(3, 1, padding=1, count_include_pad=False),
-            Conv2d(384, 96, 1, stride=1, padding=0, bias=False),
+            Conv2d(in_channels, 96, 1, stride=1, padding=0, bias=False),
         )
 
     def forward(self, x):
         x0 = self.branch_0(x)
         x1 = self.branch_1(x)
         x2 = self.branch_2(x)
-        x3 = self.brance_3(x)
+        x3 = self.branch_3(x)
         return torch.cat((x0, x1, x2, x3), dim=1)
 
 

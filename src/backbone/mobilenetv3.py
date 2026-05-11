@@ -10,9 +10,8 @@ from config.backbone.base_backbone_config import BackboneConfig
 
 
 def _make_divisible(v: float, divisor: int = 8) -> int:
-    """This function ensures that all layers have a channel number divisible by 8"""
+    """Round `v` to the nearest multiple of `divisor`, never down by more than 10%."""
     new_v = max(divisor, int(v + divisor / 2) // divisor * divisor)
-    # Make sure that round down does not go down by more than 10%.
     if new_v < 0.9 * v:
         new_v += divisor
     return new_v
@@ -233,15 +232,12 @@ class MobileNetV3(BaseBackbone):
     def __init__(self, config: BackboneConfig) -> None:
         super().__init__(config)
 
-        # Get configuration parameters
         self.model_size = config.model_size
         self.width_mult = config.width_mult
         self.reduced_tail = config.reduced_tail
         self.dilated = config.dilated
-        self.input_size = config.input_size
 
-        # Build model configuration
-        inverted_residual_setting, last_channel = self._mobilenet_v3_conf(
+        inverted_residual_setting = self._mobilenet_v3_conf(
             arch="mobilenet_v3_" + self.model_size,
             width_mult=self.width_mult,
             reduced_tail=self.reduced_tail,
@@ -258,14 +254,15 @@ class MobileNetV3(BaseBackbone):
 
         layers: list[nn.Module] = []
 
-        # building first layer
+        # First conv uses stride=1 (vs upstream's stride=2) because face inputs
+        # are already small (112x112); halving here loses too much spatial info.
         firstconv_output_channels = inverted_residual_setting[0].input_channels
         layers.append(
             Conv2dNormActivation(
                 3,
                 firstconv_output_channels,
                 kernel_size=3,
-                stride=1,  # change from 2 -> 1
+                stride=1,
                 activation_layer=nn.Hardswish,
             )
         )
@@ -322,7 +319,6 @@ class MobileNetV3(BaseBackbone):
         dilation = 2 if dilated else 1
 
         bneck_conf = partial(InvertedResidualConfig, width_mult=width_mult)
-        adjust_channels = partial(InvertedResidualConfig.adjust_channels, width_mult=width_mult)
 
         if arch == "mobilenet_v3_large":
             inverted_residual_setting = [
@@ -360,7 +356,6 @@ class MobileNetV3(BaseBackbone):
                     dilation,
                 ),
             ]
-            last_channel = adjust_channels(1280 // reduce_divider)  # C5
         elif arch == "mobilenet_v3_small":
             inverted_residual_setting = [
                 bneck_conf(16, 3, 16, 16, True, "RE", 2, 1),  # C1
@@ -393,8 +388,7 @@ class MobileNetV3(BaseBackbone):
                     dilation,
                 ),
             ]
-            last_channel = adjust_channels(1024 // reduce_divider)  # C5
         else:
             raise ValueError(f"Unsupported model type {arch}")
 
-        return inverted_residual_setting, last_channel
+        return inverted_residual_setting

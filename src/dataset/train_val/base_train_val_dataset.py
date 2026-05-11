@@ -16,16 +16,31 @@ class BaseTrainValDataset(Dataset):
 
     def __init__(self, dataset_config: TrainValDatasetConfig, transformation: BaseTransformation) -> None:
         super().__init__()
+
+        # Build label_to_idx from the UNION of train + val class names so the
+        # same class always maps to the same integer ID across splits.
+        all_labels = self.read_all_labels(dataset_config)
+        self.label_to_idx = {label: i for i, label in enumerate(all_labels)}
+
         self.data = self.read_data(dataset_config)
         self.transform = transformation.transform
 
-        self.label_to_idx = {}
         self.label_map = defaultdict(list)
         for idx, (label, _) in enumerate(self.data):
             if label not in self.label_to_idx:
+                # Defensive fallback if a subclass's read_all_labels missed it.
                 self.label_to_idx[label] = len(self.label_to_idx)
-            label_idx = self.label_to_idx[label]
-            self.label_map[label_idx].append(idx)
+            self.label_map[self.label_to_idx[label]].append(idx)
+
+        # Reject `num_classes` smaller than the actual count — loss head would
+        # be sized too small and indexing would go out of bounds.
+        num_classes = getattr(dataset_config, "num_classes", None)
+        if num_classes is not None and num_classes < len(self.label_to_idx):
+            raise ValueError(
+                f"num_classes={num_classes} in dataset config is smaller than "
+                f"the actual {len(self.label_to_idx)} classes discovered across "
+                f"train + val. Update `num_classes` to at least {len(self.label_to_idx)}."
+            )
 
     def __getitem__(self, idx):
         img_class, img_path = self.data[idx]
@@ -38,4 +53,8 @@ class BaseTrainValDataset(Dataset):
 
     def read_data(self, dataset_config: TrainValDatasetConfig) -> list[tuple[str, str]]:
         """Override to return list of (label, image_path) tuples."""
+        raise NotImplementedError()
+
+    def read_all_labels(self, dataset_config: TrainValDatasetConfig) -> list[str]:
+        """Override to return the sorted UNION of class labels across splits."""
         raise NotImplementedError()

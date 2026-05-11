@@ -12,14 +12,10 @@ from pathlib import Path
 
 import streamlit as st
 import yaml
-
-# `gui/` is intentionally NOT installed as a package (only src/* is — see
-# pyproject.toml). When Streamlit runs the script it adds the script's own
-# directory (gui/) to sys.path, so `run_manager` resolves as a flat module.
-from run_manager import (  # noqa: I001
+from run_manager import (
     RunHandle,
-    find_event_files,
     find_eval_results_json,
+    find_event_files,
     launch_evaluation,
     launch_training,
     list_checkpoints,
@@ -32,6 +28,8 @@ from run_manager import (  # noqa: I001
     write_yaml,
 )
 
+# Streamlit adds gui/ to sys.path so `run_manager` resolves as a flat module
+# alongside the installed `src/*` packages (registry, etc.).
 from registry import (
     BACKBONES,
     DATASETS,
@@ -108,12 +106,8 @@ def yaml_field(label: str, key_prefix: str, subdir: str, default_pattern: str = 
         format_func=lambda p: str(p.relative_to(REPO_ROOT)),
         key=f"{key_prefix}_yaml_select",
     )
-    # Streamlit's text_area is sticky: once a key is in session_state, the
-    # `value=` arg is ignored on later renders. Tying the widget key to the
-    # selected file path gives each file its own widget identity, so switching
-    # the dropdown drops a fresh widget that honors `value=` (the file's
-    # disk content). Inline edits to the same file are preserved across
-    # reruns because the key stays stable while the file is selected.
+    # Tie the text_area key to the selected file path so switching the
+    # dropdown drops a fresh widget that honors `value=` (text_area is sticky).
     file_disk_text = load_yaml_text(selected)
     text_key = f"{key_prefix}_yaml_text__{selected.name}"
     text = st.text_area(
@@ -122,9 +116,7 @@ def yaml_field(label: str, key_prefix: str, subdir: str, default_pattern: str = 
         height=180,
         key=text_key,
     )
-    # Final safety net: if for any reason the editor still came back empty
-    # while the file on disk has content, fall back to the disk text. Prevents
-    # silent zero-byte snapshots that crash eval.py / train.py downstream.
+    # Safety net against zero-byte snapshots crashing the subprocess later.
     if not text.strip() and file_disk_text.strip():
         text = file_disk_text
     return selected, text
@@ -163,9 +155,13 @@ def render_configure_tab() -> None:
         _, ds_text = yaml_field("Dataset", "ds", "dataset/train_val")
 
         st.subheader("Train/val transformation")
+        # Filter by suffix so the user can't pick a `_val` or `_eval` transform
+        # for the train split (mismatch crashes deep inside the transformation).
         tx_names = sorted(TRANSFORMATIONS.names())
-        train_tx_name = st.selectbox("Train transformation", tx_names, key="train_tx")
-        val_tx_name = st.selectbox("Val transformation", tx_names, key="val_tx")
+        train_tx_candidates = [n for n in tx_names if n.endswith("_train")] or tx_names
+        val_tx_candidates = [n for n in tx_names if n.endswith("_val")] or tx_names
+        train_tx_name = st.selectbox("Train transformation", train_tx_candidates, key="train_tx")
+        val_tx_name = st.selectbox("Val transformation", val_tx_candidates, key="val_tx")
         _, tx_text = yaml_field("Transformation", "tx", "transformation/train_val")
 
     with col_right:
@@ -209,7 +205,11 @@ def render_configure_tab() -> None:
                 "Eval dataset", "pe_ds_yaml", "dataset/eval"
             )
         with c2:
-            pe_eval_tx = st.selectbox("Eval transformation", sorted(TRANSFORMATIONS.names()), key="pe_tx")
+            eval_tx_names = (
+                [n for n in sorted(TRANSFORMATIONS.names()) if n.endswith("_eval")]
+                or sorted(TRANSFORMATIONS.names())
+            )
+            pe_eval_tx = st.selectbox("Eval transformation", eval_tx_names, key="pe_tx")
             pe_eval_tx_path, pe_tx_text = yaml_field(
                 "Eval transformation", "pe_tx_yaml", "transformation/eval"
             )
@@ -229,10 +229,8 @@ def render_configure_tab() -> None:
     )
 
     if launch_btn:
-        # Refuse to launch if any required YAML editor came back empty —
-        # this used to silently produce zero-byte snapshots and crash
-        # train.py with confusing AttributeErrors deep in the config loader.
-        # Mirrors the same guard already in render_evaluate_tab.
+        # Refuse to launch with any empty YAML editor (would create zero-byte
+        # snapshots that crash train.py downstream).
         empty_required = [
             label
             for label, content in (
@@ -413,10 +411,7 @@ def render_monitor_tab() -> None:
             else:
                 st.error(f"Status: EXITED ({rc})")
 
-    # Charts and log are wrapped in a fragment so auto-refresh re-renders ONLY
-    # them (without freezing the controls above with `time.sleep`). When
-    # `auto_refresh` is off or the run is finished, run_every=None disables
-    # the periodic re-run.
+    # Fragment so auto-refresh re-renders only charts/log, not the controls.
     auto_run_every = (
         int(refresh_interval) if (st.session_state.auto_refresh and handle and handle.is_alive) else None
     )
@@ -694,8 +689,8 @@ def _plot_roc_curve(
     Log-x highlights the low-FAR operating regime that matters for
     biometric thresholds; the linear view is for at-a-glance shape and
     AUC. The two share data so they always agree."""
-    import numpy as np
     import matplotlib.pyplot as plt
+    import numpy as np
 
     fpr_arr = np.asarray(fpr, dtype=float)
     tpr_arr = np.asarray(tpr, dtype=float)
@@ -779,7 +774,10 @@ def _plot_score_distributions(
         # when they fall close together (typical for tight ROC operating points).
         styles = [("--", "C0"), (":", "C4"), ("-.", "C5")]
         for (label, value), (linestyle, color) in zip(threshold_lines, styles, strict=False):
-            ax.axvline(value, linestyle=linestyle, color=color, linewidth=1.5, label=f"{label} thr = {value:.3f}")
+            ax.axvline(
+                value, linestyle=linestyle, color=color, linewidth=1.5,
+                label=f"{label} thr = {value:.3f}",
+            )
 
     ax.set_xlabel(f"{distance_kind.capitalize()} distance — lower = more similar")
     ax.set_ylabel("Pair count")
@@ -790,8 +788,10 @@ def _plot_score_distributions(
     plt.close(fig)
 
     st.caption(
-        f"Genuine: median {np.median(g):.3f}, IQR [{np.percentile(g, 25):.3f}, {np.percentile(g, 75):.3f}]"
-        f"  ·  Impostor: median {np.median(i):.3f}, IQR [{np.percentile(i, 25):.3f}, {np.percentile(i, 75):.3f}]"
+        f"Genuine: median {np.median(g):.3f}, "
+        f"IQR [{np.percentile(g, 25):.3f}, {np.percentile(g, 75):.3f}]"
+        f"  ·  Impostor: median {np.median(i):.3f}, "
+        f"IQR [{np.percentile(i, 25):.3f}, {np.percentile(i, 75):.3f}]"
     )
 
 
@@ -841,7 +841,11 @@ def render_evaluate_tab() -> None:
         eval_dataset = st.selectbox("Eval dataset", EVAL_DATASETS.names(), key="eval_ds_name")
         _, ds_text = yaml_field("Eval dataset", "eval_ds_yaml", "dataset/eval")
     with col2:
-        eval_tx = st.selectbox("Eval transformation", sorted(TRANSFORMATIONS.names()), key="eval_tx_name")
+        eval_tx_names = (
+            [n for n in sorted(TRANSFORMATIONS.names()) if n.endswith("_eval")]
+            or sorted(TRANSFORMATIONS.names())
+        )
+        eval_tx = st.selectbox("Eval transformation", eval_tx_names, key="eval_tx_name")
         _, tx_text = yaml_field("Eval transformation", "eval_tx_yaml", "transformation/eval")
         evaluator_name = st.selectbox("Evaluator", EVALUATORS.names(), key="evaluator_name")
         _, eval_text = yaml_field("Evaluator", "evaluator_yaml", "evaluator")
@@ -855,10 +859,7 @@ def render_evaluate_tab() -> None:
     )
 
     if st.button("Run evaluation", type="primary"):
-        # Refuse to launch if any YAML editor came back empty — happens when the
-        # text_area's session_state was never populated and would otherwise yield
-        # zero-byte YAMLs that crash eval.py downstream with confusing errors
-        # like 'BackboneConfig has no attribute input_size'.
+        # Refuse zero-byte snapshots (would crash eval.py downstream).
         empty = [
             label
             for label, content in (

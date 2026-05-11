@@ -128,6 +128,34 @@ class TestEvaluatorBuilder:
         assert "lfw_accuracy_mean" in results
         assert "roc_auc" in results
 
+    def test_peft_prefixed_keys_without_lora_config_raises(
+        self, eval_env_setup, tmp_path
+    ):
+        """B-5 regression: a checkpoint saved from a PEFT-wrapped backbone
+        (keys with `base_model.model.*` prefix) but missing the
+        `lora_config` metadata would silently drop every key under
+        `strict=False` and run eval on a randomly-initialized backbone —
+        producing a deceptive ~85% LFW accuracy. The fix detects the
+        prefix-without-metadata case and tells the user to backfill
+        or re-save."""
+        from config.backbone.base_backbone_config import BackboneConfig
+        from registry import BACKBONES
+        from tools.evaluator_builder import EvaluatorBuilder
+
+        backbone_cfg = BackboneConfig(eval_env_setup["BACKBONE_CONFIG"])
+        backbone = BACKBONES.get("inception_resnet_v1")(backbone_cfg)
+        # Re-key the state_dict with the PEFT prefix, but DON'T attach
+        # `lora_config` — exactly the failure mode that motivated
+        # scripts/backfill_lora_config.py.
+        prefixed = {f"base_model.model.{k}": v for k, v in backbone.state_dict().items()}
+        ckpt = {"backbone_state_dict": prefixed}
+        bad_path = tmp_path / "ckpt_peft_no_metadata.pth"
+        torch.save(ckpt, bad_path)
+        eval_env_setup["CHECKPOINT_PATH"] = str(bad_path)
+
+        with pytest.raises(ValueError, match="PEFT-prefixed.*no `lora_config`"):
+            EvaluatorBuilder(_build_eval_env(eval_env_setup))
+
     def test_lora_target_modules_mismatch_raises_friendly_error(
         self, eval_env_setup, tmp_path
     ):

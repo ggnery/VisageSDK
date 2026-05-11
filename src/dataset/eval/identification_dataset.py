@@ -1,12 +1,5 @@
-"""Identification dataset: gallery + probe sets in ImageFolder layout.
-
-Layout:
-    <eval_dir>/gallery/<person>/*.jpg
-    <eval_dir>/probe/<person>/*.jpg
-
-The dataset stores all images flat with a `roles` array indicating
-"gallery" vs "probe" so an evaluator can split them after encoding.
-"""
+"""Identification dataset: `<eval_dir>/{gallery,probe}/<person>/*` flat with
+a `roles` array marking each image as "gallery" or "probe"."""
 
 from pathlib import Path
 from typing import override

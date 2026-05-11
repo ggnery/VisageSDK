@@ -9,8 +9,10 @@ class CrossEntropyLoss(BaseLoss):
     def __init__(self, loss_config: LossConfig):
         super().__init__(loss_config)
 
-        self.linear = nn.Linear(self.embedding_size, self.num_classes, bias=loss_config.use_bias)
-        self.criterion = nn.CrossEntropyLoss(label_smoothing=loss_config.label_smoothing)
+        self.use_bias = bool(getattr(loss_config, "use_bias", True))
+        self.label_smoothing = float(getattr(loss_config, "label_smoothing", 0.0))
+        self.linear = nn.Linear(self.embedding_size, self.num_classes, bias=self.use_bias)
+        self.criterion = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
 
     def forward(self, embeddings: torch.Tensor, y_true: torch.Tensor) -> tuple[torch.Tensor, dict]:
         logits = self.linear(embeddings)

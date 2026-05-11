@@ -88,7 +88,9 @@ class TrainerConfig(BaseConfig):
         save = self._params["checkpoint"]["save"]
         load = self._params["checkpoint"]["load"]
 
-        self.checkpoint_save_frequency = save["frequency"]
+        # Clamp to >=1 so `epoch % frequency` doesn't ZeroDivisionError.
+        freq = int(save["frequency"])
+        self.checkpoint_save_frequency = max(freq, 1)
         self.checkpoint_save_dir = save["dir"]
 
         self.checkpoint_load_path = load["path"]
@@ -100,8 +102,8 @@ class TrainerConfig(BaseConfig):
         freeze = self._params.get("freeze") or {}
         self.freeze_patterns = freeze.get("patterns")
         self.freeze_except = freeze.get("except")
-        # Use presence (not truthiness) so `patterns: []` + `except: [...]`
-        # is also rejected — almost certainly a user typo.
+        # Reject both keys set together (presence check, not truthiness, so
+        # `patterns: []` + `except: [...]` is also caught).
         if self.freeze_patterns is not None and self.freeze_except is not None:
             raise ValueError("freeze: provide either `patterns` or `except`, not both")
         raw_schedule = freeze.get("unfreeze_at_epoch") or {}
@@ -134,12 +136,32 @@ class TrainerConfig(BaseConfig):
         self.lora_alpha = float(lora.get("alpha", 16.0))
         self.lora_dropout = float(lora.get("dropout", 0.0))
         self.lora_target_modules = list(lora.get("target_modules", []))
-        # `modules_to_save` is the PEFT escape hatch for modules that
-        # need full fine-tuning (not LoRA). Use it for components like the
-        # final feature head where adapter-only updates aren't expressive
-        # enough to re-shape the embedding space for a new domain.
+        # PEFT escape hatch: modules listed here are fully fine-tuned (not LoRA).
         self.lora_modules_to_save = list(lora.get("modules_to_save", []))
         if self.lora_enabled and not self.lora_target_modules:
             raise ValueError("lora.enabled requires at least one entry in lora.target_modules")
+
+        # LoRA renames every backbone parameter to `base_model.model.<original>`,
+        # so freeze/unfreeze patterns and optimizer.param_groups (written against
+        # bare names) silently become no-ops. Reject the combination up front.
+        if self.lora_enabled:
+            if self.freeze_patterns or self.freeze_except:
+                raise ValueError(
+                    "`lora.enabled` is incompatible with `freeze.patterns`/`freeze.except`: "
+                    "PEFT handles all freezing of the base backbone — remove the freeze block."
+                )
+            if self.unfreeze_at_epoch:
+                raise ValueError(
+                    "`lora.enabled` is incompatible with `freeze.unfreeze_at_epoch`: "
+                    "patterns won't match PEFT-prefixed names. Remove the schedule or "
+                    "use full fine-tuning instead of LoRA."
+                )
+            if self.optimizer_param_groups:
+                raise ValueError(
+                    "`lora.enabled` is incompatible with `optimizer.param_groups`: "
+                    "pattern strings target bare backbone names that don't match "
+                    "PEFT-wrapped parameter names. Drop the param_groups block, or "
+                    "switch off LoRA if you need discriminative learning rates."
+                )
 
         self.periodic_eval = self._params.get("periodic_eval")

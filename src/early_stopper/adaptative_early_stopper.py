@@ -25,8 +25,12 @@ class AdaptativeEarlyStopper(BaseEarlyStopper):
             self.dynamic_patience = self.base_patience
         else:
             self.wait_count += 1
-            if self.wait_count >= (self.base_patience * self.patience_increase_ratio):
-                self.dynamic_patience += 1
+            # Grow dynamic_patience once when wait_count crosses the threshold
+            # (one-shot "second chance" — incrementing every epoch never stops).
+            threshold = int(self.base_patience * self.patience_increase_ratio)
+            if self.wait_count == threshold and self.dynamic_patience == self.base_patience:
+                extra = max(1, self.base_patience - threshold)
+                self.dynamic_patience = self.base_patience + extra
             if self.wait_count >= self.dynamic_patience:
                 self.logger.info("Stopping early due to lack of improvement.")
                 return True

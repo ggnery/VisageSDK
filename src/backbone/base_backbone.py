@@ -17,11 +17,5 @@ class BaseBackbone(nn.Module):
         self.to(self.device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Override to implement custom forward.
-
-        Args:
-            x: input batch (B x C x H x W)
-        Returns:
-            embeddings (B x embedding_size)
-        """
+        """Override to map (B, C, H, W) → (B, embedding_size)."""
         raise NotImplementedError()

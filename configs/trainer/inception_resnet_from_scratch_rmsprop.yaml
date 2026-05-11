@@ -24,8 +24,8 @@ dataloader:
     shuffle: null # If "sampler" is present this MUST be null 
     num_workers: 8
   val:
-    batch_size: 172 # Can be any interger as "sampler" is not present in validation
-    shuffle: True # Can be either True or False as "sampler" is not present in validation
+    batch_size: 172
+    shuffle: False
     num_workers: 8
 
 num_epochs: 2000

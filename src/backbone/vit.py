@@ -1,21 +1,8 @@
-"""LVFace-compatible Vision Transformer backbone.
+"""LVFace-compatible ViT backbone (loads `LVFace-B_Glint360K.pt` with strict=True).
 
-Architecturally identical to LVFace's `VisionTransformer`
-(github.com/bytedance/LVFace, in turn forked from InsightFace), so the
-official `LVFace-B_Glint360K.pt` state_dict loads with strict=True.
-
-Differences vs the upstream code, all surface-level:
-
-- Subclasses our `BaseBackbone` so the trainer pipeline picks it up.
-- Reimplements `DropPath` / `to_2tuple` inline to avoid a `timm` runtime
-  dependency for what is effectively 15 lines of code.
-- Drops the upstream `torch.cuda.amp.autocast(...)` calls inside
-  `Attention.forward`; the trainer already orchestrates AMP via its own
-  context, and pinning it in the layer breaks bf16 / cpu paths.
-- The MAE-style random masking branch is omitted from `forward`; it
-  matters only for masked-pretraining and we use this backbone for
-  inference / re-id fine-tuning. The `mask_token` Parameter is kept so
-  the upstream state_dict still loads with strict=True.
+Surface-level differences vs upstream: inlines DropPath/to_2tuple (avoids timm
+dependency), drops in-layer autocast (trainer orchestrates AMP), and omits the
+MAE masking branch from forward (`mask_token` Parameter is kept for strict-load).
 """
 
 from __future__ import annotations
@@ -101,7 +88,6 @@ class _Attention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, n, c = x.shape
-        # qkv: (B, N, 3 * C) → (3, B, heads, N, head_dim)
         qkv = self.qkv(x).reshape(b, n, 3, self.num_heads, c // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -158,9 +144,8 @@ class _PatchEmbed(nn.Module):
         super().__init__()
         ih, iw = _to_2tuple(img_size)
         ph, pw = _to_2tuple(patch_size)
-        # Floor division mirrors LVFace exactly: image gets cropped if it
-        # doesn't tile evenly. With img=112, patch=9 → 12*12 = 144 patches
-        # (the trailing 4 pixels in each dim are silently dropped by stride).
+        # Floor division mirrors LVFace: img=112, patch=9 → 12×12=144 patches
+        # (trailing 4 px per dim are cropped by the stride).
         self.num_patches = (ih // ph) * (iw // pw)
         self.img_size = (ih, iw)
         self.patch_size = (ph, pw)
@@ -196,9 +181,6 @@ class LVFaceVisionTransformer(BaseBackbone):
     def __init__(self, backbone_config: BackboneConfig) -> None:
         super().__init__(backbone_config)
 
-        # `input_size` arrives as a list (from YAML) of length 2; collapse it
-        # into a (h, w) tuple before passing into PatchEmbed, which is typed
-        # to accept either `int` or a 2-tuple.
         if isinstance(self.input_size, int):
             ih = iw = self.input_size
         else:
@@ -219,13 +201,11 @@ class LVFaceVisionTransformer(BaseBackbone):
         num_patches = self.patch_embed.num_patches
         self.num_patches = num_patches
 
-        # Match upstream parameter names (pos_embed, mask_token) so the
-        # official state_dict loads with strict=True.
+        # Match upstream parameter names so the official state_dict strict-loads.
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
         self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_drop = nn.Dropout(p=drop_rate)
 
-        # Linearly increasing per-layer drop_path, like the upstream rule.
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
         self.blocks = nn.ModuleList(
             [
@@ -239,10 +219,8 @@ class LVFaceVisionTransformer(BaseBackbone):
         )
         self.norm = nn.LayerNorm(embed_dim)
 
-        # Feature head: flatten all tokens → (B, num_patches * embed_dim) and
-        # project down to embed_dim with two BatchNorm1d sandwiches. Same as
-        # LVFace; using bias=False on both Linears matches the published
-        # checkpoint exactly (no `feature.0.bias` / `feature.2.bias` keys).
+        # Feature head: flatten tokens → project to embed_dim. bias=False matches
+        # the published LVFace checkpoint exactly.
         self.feature = nn.Sequential(
             nn.Linear(embed_dim * num_patches, embed_dim, bias=False),
             nn.BatchNorm1d(embed_dim, eps=2e-5),
@@ -250,11 +228,7 @@ class LVFaceVisionTransformer(BaseBackbone):
             nn.BatchNorm1d(embed_dim, eps=2e-5),
         )
 
-        # Match upstream init exactly: pos_embed is truncated normal,
-        # mask_token is regular normal. Distinction matters only for
-        # from-scratch training (loading the LVFace checkpoint overwrites
-        # both), but mismatched defaults make exact reproductions of the
-        # upstream's training trajectory impossible.
+        # pos_embed: truncated normal; mask_token: normal — matches upstream init.
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
         nn.init.normal_(self.mask_token, std=0.02)
         self.apply(self._init_weights)
@@ -278,7 +252,6 @@ class LVFaceVisionTransformer(BaseBackbone):
         for block in self.blocks:
             x = block(x)
         x = self.norm(x)
-        # Flatten all token embeddings, then run the feature head.
         x = x.reshape(b, self.num_patches * self.embedding_size)
         x = self.feature(x)
         return x
