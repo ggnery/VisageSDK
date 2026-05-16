@@ -1,7 +1,7 @@
 import logging
 from typing import override
 
-from config.early_stopper.base_early_stopper_config import EarlyStopperConfig
+from config.early_stopper_config import EarlyStopperConfig
 from early_stopper.base_early_stopper import BaseEarlyStopper
 
 
@@ -12,15 +12,25 @@ class AdaptativeEarlyStopper(BaseEarlyStopper):
         self.base_patience = config.base_patience
         self.delta = config.delta
         self.patience_increase_ratio = config.patience_increase_ratio
+        self.mode = str(getattr(config, "mode", "min"))
+        if self.mode not in {"min", "max"}:
+            raise ValueError(f"early_stopper.mode must be 'min' or 'max', got {self.mode!r}")
         self.wait_count = 0
         self.best_score = None
         self.dynamic_patience = config.base_patience
         self.logger = logging.getLogger(__name__)
 
+    def _is_improvement(self, score: float) -> bool:
+        if self.best_score is None:
+            return True
+        if self.mode == "min":
+            return score < self.best_score - self.delta
+        return score > self.best_score + self.delta
+
     @override
-    def early_stop(self, val_loss: float) -> bool:
-        if self.best_score is None or val_loss < self.best_score - self.delta:
-            self.best_score = val_loss
+    def early_stop(self, score: float) -> bool:
+        if self._is_improvement(score):
+            self.best_score = score
             self.wait_count = 0
             self.dynamic_patience = self.base_patience
         else:

@@ -7,7 +7,7 @@ from torch.optim.lr_scheduler import (
     StepLR,
 )
 
-from config.trainer.trainer_config import TrainerConfig
+from config.trainer_config import TrainerConfig
 
 
 def build_scheduler(optimizer: Optimizer, config: TrainerConfig) -> LRScheduler:

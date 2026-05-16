@@ -41,14 +41,14 @@ def cosine_similarity_matrix(query: torch.Tensor, gallery: torch.Tensor) -> torc
 
 
 def verification_accuracy(distances: np.ndarray, labels: np.ndarray, threshold: float) -> float:
-    """Binary accuracy treating pairs with distance < threshold as 'same'.
+    """Binary accuracy treating pairs with distance <= threshold as 'same'.
 
     Args:
         distances: (N,) pair distances
         labels: (N,) 1 for same-pair, 0 for different
-        threshold: distance threshold below which pairs are predicted same
+        threshold: distance threshold at or below which pairs are predicted same
     """
-    predictions = (distances < threshold).astype(np.int32)
+    predictions = (distances <= threshold).astype(np.int32)
     return float((predictions == labels).mean())
 
 
@@ -89,7 +89,9 @@ def roc_curve(
     tpr = np.zeros_like(thresholds)
     fpr = np.zeros_like(thresholds)
     for i, t in enumerate(thresholds):
-        pred_same = distances < t
+        # `<=` (not `<`) so the max-distance pair is included at t=hi —
+        # otherwise (TPR, FPR) never reaches (1.0, 1.0) and AUC underestimates.
+        pred_same = distances <= t
         tpr[i] = float(np.logical_and(pred_same, pos_mask).sum()) / n_pos
         fpr[i] = float(np.logical_and(pred_same, neg_mask).sum()) / n_neg
     return fpr, tpr, thresholds
@@ -98,7 +100,9 @@ def roc_curve(
 def roc_auc(distances: np.ndarray, labels: np.ndarray) -> float:
     """Trapezoidal AUC of the ROC curve."""
     fpr, tpr, _ = roc_curve(distances, labels)
-    order = np.argsort(fpr)
+    # lexsort breaks FPR ties by TPR so the trapezoidal integration stays
+    # monotonic across plateau regions of FPR.
+    order = np.lexsort((tpr, fpr))
     return float(np.trapezoid(tpr[order], fpr[order]))
 
 
@@ -116,11 +120,17 @@ def tar_at_far(distances: np.ndarray, labels: np.ndarray, far_target: float) -> 
 
     The smallest swept threshold yields FAR=0 by construction, so at least
     one candidate always satisfies fpr<=far_target for any positive target.
+    On TPR ties, prefer the LARGEST threshold (most permissive — operationally
+    more useful at the same TAR).
     """
     fpr, tpr, thresholds = roc_curve(distances, labels, n_thresholds=2000)
     valid = fpr <= far_target
     idx_candidates = np.where(valid)[0]
-    best = idx_candidates[np.argmax(tpr[idx_candidates])]
+    candidate_tprs = tpr[idx_candidates]
+    max_tpr = candidate_tprs.max()
+    # Tie-break by largest threshold.
+    tied = idx_candidates[candidate_tprs == max_tpr]
+    best = int(tied[np.argmax(thresholds[tied])])
     return float(tpr[best]), float(thresholds[best])
 
 
@@ -191,8 +201,9 @@ def cmc_curve(
     n_gallery = int(gl.shape[0])
     max_rank = int(max_rank) if max_rank is not None else n_gallery
 
-    # For each probe, sort gallery indices by descending similarity.
-    order = torch.argsort(sim, dim=1, descending=True).numpy()
+    # For each probe, sort gallery indices by descending similarity. `stable=True`
+    # keeps tie-breaking deterministic across runs.
+    order = torch.argsort(sim, dim=1, descending=True, stable=True).numpy()
     matches = np.zeros(max_rank, dtype=np.float64)
     n_valid = 0
     for i, true_label in enumerate(pl):
@@ -236,7 +247,7 @@ def mean_average_precision(
     sim = similarity.detach().cpu()
     pl = probe_labels.detach().cpu().numpy()
     gl = gallery_labels.detach().cpu().numpy()
-    order = torch.argsort(sim, dim=1, descending=True).numpy()
+    order = torch.argsort(sim, dim=1, descending=True, stable=True).numpy()
 
     aps: list[float] = []
     for i, true_label in enumerate(pl):

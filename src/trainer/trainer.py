@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from backbone.base_backbone import BaseBackbone
 from batch_sampler.base_batch_sampler import BaseBatchSampler
-from config.trainer.trainer_config import TrainerConfig
+from config.trainer_config import TrainerConfig
 from dataset.train_val.base_train_val_dataset import BaseTrainValDataset
 from early_stopper.base_early_stopper import BaseEarlyStopper
 from evaluator.base_evaluator import BaseEvaluator
@@ -266,8 +266,17 @@ class Trainer:
 
     @staticmethod
     def _peek_is_lora_wrapped(path: Path) -> bool:
-        """Return True if `path` was saved from a PEFT-wrapped backbone (key prefix sniff)."""
-        ckpt = torch.load(path, map_location="cpu", weights_only=False)
+        """Return True if `path` was saved from a PEFT-wrapped backbone (key prefix sniff).
+
+        Uses weights_only=True for the peek — we only inspect tensor keys, no
+        custom classes need to deserialize, so avoid the pickle ACE risk.
+        """
+        try:
+            ckpt = torch.load(path, map_location="cpu", weights_only=True)
+        except Exception:
+            # Some legacy checkpoints can't deserialize under weights_only=True
+            # (e.g. contain dict subclasses). Fall back to the full unpickling.
+            ckpt = torch.load(path, map_location="cpu", weights_only=False)
         sd = ckpt.get("backbone_state_dict", {}) if isinstance(ckpt, dict) else {}
         return any(k.startswith("base_model.model.") for k in sd)
 
@@ -298,6 +307,23 @@ class Trainer:
 
         self.optimizer = build_optimizer(self.backbone, self.loss, self.config)
         self.scheduler = build_scheduler(self.optimizer, self.config)
+
+        # If we're resuming mid-training (self.epoch advanced by load_checkpoint),
+        # step the fresh scheduler forward so its phase matches the completed epochs.
+        # Without this, the LR schedule restarts from epoch 0 while training resumes
+        # from epoch N — wasting any warmup/cosine progress.
+        if self.epoch > 1:
+            for _ in range(self.epoch - 1):
+                if isinstance(self.scheduler, ReduceLROnPlateau):
+                    self.scheduler.step(self.best_val_loss)
+                else:
+                    self.scheduler.step()
+
+        # The periodic evaluator was constructed by the builder with a reference
+        # to the *unwrapped* backbone; rebind it to the LoRA-wrapped one so it
+        # evaluates the actual model being trained.
+        if self.periodic_evaluator is not None:
+            self.periodic_evaluator.backbone = self.backbone
 
     def _autocast(self):
         if not self.amp_enabled:
@@ -359,7 +385,7 @@ class Trainer:
 
             # Weight stats by batch_size so a partial last batch doesn't inflate the average.
             for k, v in batch_stats.items():
-                if isinstance(v, (int, float)):
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
                     running_stats[k] = running_stats.get(k, 0.0) + float(v) * batch_size
 
             pbar.set_postfix({"loss": loss.item()})
@@ -419,7 +445,7 @@ class Trainer:
         results = self.periodic_evaluator.evaluate()
         # Only scalars are TB-writable; non-scalars flow through to `save_stats`.
         for k, v in results.items():
-            if not isinstance(v, (int, float)):
+            if not isinstance(v, (int, float)) or isinstance(v, bool):
                 continue
             self.logger.info(f"  eval/{k} = {v:.6f}")
             if self.writer is not None:
@@ -479,6 +505,7 @@ class Trainer:
 
         For LoRA-wrapped backbones, deepcopies and merges adapters into the
         base weights so the exported graph has no `lora_A`/`lora_B` ops.
+        Export runs on CPU so the resulting `.onnx` is portable.
         """
         if not self.config.onnx_export_enabled:
             return
@@ -486,7 +513,11 @@ class Trainer:
 
         export_model = self._merged_backbone_for_export()
         h, w = export_model.input_size
-        dummy = torch.randn(1, 3, h, w, device=self.device)
+        # Move to CPU so the exported graph doesn't bake in CUDA kernels.
+        import copy
+
+        export_model = copy.deepcopy(export_model).cpu()
+        dummy = torch.randn(1, 3, h, w)
         dynamic_axes = (
             {"input": {0: "batch"}, "embedding": {0: "batch"}}
             if self.config.onnx_export_dynamic_batch

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from config.loss.base_loss_config import LossConfig
+from config.loss_config import LossConfig
 
 
 class BaseLoss(nn.Module):
@@ -14,7 +14,8 @@ class BaseLoss(nn.Module):
         self.device = torch.device(loss_config.device)
         self.num_classes = loss_config.num_classes
         self.embedding_size = loss_config.embedding_size
-        self.to(self.device)
+        # Note: builder calls `.to(device)` on the fully-constructed subclass —
+        # don't call `.to()` here because subclass layers haven't been added yet.
 
     def forward(self, embeddings: torch.Tensor, y_true: torch.Tensor) -> tuple[torch.Tensor, dict]:
         """Override to return (loss_tensor, loss_stats_dict)."""

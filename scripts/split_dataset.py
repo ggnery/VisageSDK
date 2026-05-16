@@ -77,12 +77,21 @@ def _assign(
     n_val = max(1, round(n * val_frac))
     n_train = n - n_test - n_val
     if n_train < 1:
-        # n == 3 (or odd rounding): 1 each, no duplication
-        return {
-            "train": shuffled[0:1],
-            "val": shuffled[1:2],
-            "test": shuffled[2:3],
-        }, False
+        # Shrink val first, then test, to keep at least one image per split
+        # without dropping data (the previous heuristic kept 3 and dropped the rest).
+        while n_train < 1 and n_val > 1:
+            n_val -= 1
+            n_train += 1
+        while n_train < 1 and n_test > 1:
+            n_test -= 1
+            n_train += 1
+        if n_train < 1:
+            # n == 3: 1 each, no duplication
+            return {
+                "train": shuffled[0:1],
+                "val": shuffled[1:2],
+                "test": shuffled[2:3],
+            }, False
 
     return {
         "test": shuffled[:n_test],

@@ -4,7 +4,7 @@ import pytest
 import torch
 import yaml
 
-from config.loss.base_loss_config import LossConfig
+from config.loss_config import LossConfig
 from loss.center_loss import CenterLoss
 from loss.cross_entropy_loss import CrossEntropyLoss
 from loss.margin_cosine_product_loss import MarginCosineProductLoss

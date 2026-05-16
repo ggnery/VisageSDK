@@ -4,7 +4,7 @@ from typing import override
 import torch
 import torch.nn.functional as F
 
-from config.loss.base_loss_config import LossConfig
+from config.loss_config import LossConfig
 from loss.base_loss import BaseLoss
 
 
@@ -25,6 +25,16 @@ class TripletLoss(BaseLoss):
             # `embeddings` so .backward() still traverses the graph (a leaf
             # zero tensor would be a silent no-op).
             zero_loss = (embeddings * 0.0).sum()
+            # Populate the same keys the non-empty branch emits so downstream
+            # logging in trainer (sum-aggregating numeric values) doesn't KeyError.
+            mining_info.update(
+                {
+                    "avg_pos_distance": 0.0,
+                    "avg_neg_distance": 0.0,
+                    "active_triplets": 0,
+                    "total_triplets": 0,
+                }
+            )
             return zero_loss, mining_info
 
         # Extract anchor, positive, negative indices
@@ -103,7 +113,7 @@ class TripletLoss(BaseLoss):
     def find_semi_hard_negative(
         self, anchor_idx: int, ap_distance: torch.Tensor, distances: torch.Tensor, labels: torch.Tensor
     ) -> int | None:
-        """Return an index n with d(a,p) < d(a,n) < d(a,p) + margin, or the hardest if none."""
+        """Return an index n with d(a,p) < d(a,n) < d(a,p) + margin, or None."""
         anchor_label = labels[anchor_idx]
         anchor_distances = distances[anchor_idx]
 
@@ -123,6 +133,7 @@ class TripletLoss(BaseLoss):
         if len(semi_hard_candidates) > 0:
             return int(semi_hard_candidates[torch.randint(0, len(semi_hard_candidates), (1,))].item())
 
-        # No semi-hard negative: fall back to the hardest (closest) negative.
-        hardest_idx = torch.argmin(candidate_distances)
-        return int(candidate_indices[hardest_idx].item())
+        # No semi-hard negative: drop this anchor-positive pair rather than
+        # injecting a pure hard negative — the latter destabilizes early
+        # training and contradicts the semi-hard mining protocol.
+        return None

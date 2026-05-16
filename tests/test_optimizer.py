@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from backbone.base_backbone import BaseBackbone
-from config.trainer.trainer_config import TrainerConfig
+from config.trainer_config import TrainerConfig
 from loss.base_loss import BaseLoss
 from tools.optimizer import build_optimizer
 
@@ -127,14 +127,17 @@ class TestParamGroups:
         with pytest.raises(ValueError, match="pattern"):
             build_optimizer(model, loss, cfg)
 
-    def test_frozen_params_remain_in_optimizer(self):
-        """Frozen params should still be added; optimizer just skips them on step."""
+    def test_frozen_params_excluded_from_optimizer(self):
+        """Frozen params are filtered out so they don't accumulate dead state and
+        so any later unfreeze creates a clean optimizer entry at re-add time."""
         model, loss = StubBackbone(), StubLoss()
         for p in model.features[0].parameters():
             p.requires_grad = False
         cfg = StubTrainerConfig()
         opt = build_optimizer(model, loss, cfg)
-        # Identity check (param tensors compare elementwise with `==`, not by id)
         all_param_ids = {id(p) for g in opt.param_groups for p in g["params"]}
         for p in model.features[0].parameters():
+            assert id(p) not in all_param_ids
+        # Trainable params (features[1], last_linear, loss.weight) are still in.
+        for p in model.features[1].parameters():
             assert id(p) in all_param_ids

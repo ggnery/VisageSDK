@@ -11,13 +11,22 @@ Each unique image is encoded once; pairs are exposed as
 from pathlib import Path
 from typing import override
 
-from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
+from config.eval_dataset_config import EvalDatasetConfig
 from dataset.eval.base_eval_dataset import BaseEvalDataset
 from transformation.base_transformation import BaseTransformation
 
+_DEFAULT_EXTS = ("jpg", "jpeg", "png", "bmp")
 
-def _img_path(root: Path, name: str, idx: int, ext: str) -> Path:
-    return root / name / f"{name}_{idx:04d}.{ext}"
+
+def _resolve_img_path(root: Path, name: str, idx: int, exts: tuple[str, ...]) -> Path:
+    """Return the first existing path matching any of the candidate extensions."""
+    for ext in exts:
+        candidate = root / name / f"{name}_{idx:04d}.{ext}"
+        if candidate.exists():
+            return candidate
+    # No match found — return the first candidate so the downstream existence
+    # check (in __init__) raises a FileNotFoundError pointing at a real path.
+    return root / name / f"{name}_{idx:04d}.{exts[0]}"
 
 
 class LFWPairsDataset(BaseEvalDataset):
@@ -37,7 +46,13 @@ class LFWPairsDataset(BaseEvalDataset):
 
         eval_dir = Path(config.eval_dir)
         pairs_path = Path(config.pairs_path)
-        ext = getattr(config, "image_ext", "jpg")
+        ext_cfg = getattr(config, "image_ext", None)
+        if isinstance(ext_cfg, str):
+            exts: tuple[str, ...] = (ext_cfg,)
+        elif isinstance(ext_cfg, (list, tuple)) and ext_cfg:
+            exts = tuple(ext_cfg)
+        else:
+            exts = _DEFAULT_EXTS
 
         if not pairs_path.exists():
             raise FileNotFoundError(f"Pairs file not found: {pairs_path}")
@@ -45,7 +60,7 @@ class LFWPairsDataset(BaseEvalDataset):
         path_to_idx: dict = {}
 
         def register(name: str, idx: int) -> int:
-            path = _img_path(eval_dir, name, idx, ext)
+            path = _resolve_img_path(eval_dir, name, idx, exts)
             key = str(path)
             if key not in path_to_idx:
                 path_to_idx[key] = len(self.data)

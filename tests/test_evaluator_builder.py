@@ -16,7 +16,7 @@ def _write_yaml(path: Path, data: dict) -> None:
 def eval_env_setup(tmp_lfw_pairs, tmp_path, populated_registries):
     """Train a tiny backbone, save a checkpoint, then return env vars
     pointing eval.py at it."""
-    from config.backbone.base_backbone_config import BackboneConfig
+    from config.backbone_config import BackboneConfig
     from registry import BACKBONES
 
     images_dir, pairs_path = tmp_lfw_pairs
@@ -107,7 +107,7 @@ class TestEvaluatorBuilder:
     def test_loads_raw_state_dict(self, eval_env_setup, tmp_path):
         """If the checkpoint is a raw state_dict (no `backbone_state_dict`
         wrapper), the builder still loads it."""
-        from config.backbone.base_backbone_config import BackboneConfig
+        from config.backbone_config import BackboneConfig
         from registry import BACKBONES
         from tools.evaluator_builder import EvaluatorBuilder
 
@@ -138,7 +138,7 @@ class TestEvaluatorBuilder:
         producing a deceptive ~85% LFW accuracy. The fix detects the
         prefix-without-metadata case and tells the user to backfill
         or re-save."""
-        from config.backbone.base_backbone_config import BackboneConfig
+        from config.backbone_config import BackboneConfig
         from registry import BACKBONES
         from tools.evaluator_builder import EvaluatorBuilder
 
@@ -165,7 +165,7 @@ class TestEvaluatorBuilder:
         `Target modules X not found in the base model.` deep in its
         internals. The fix detects the mismatch up front and tells the
         user to pick the matching backbone."""
-        from config.backbone.base_backbone_config import BackboneConfig
+        from config.backbone_config import BackboneConfig
         from registry import BACKBONES
         from tools.evaluator_builder import EvaluatorBuilder
 

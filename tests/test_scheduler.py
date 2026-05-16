@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.optim import SGD
 from torch.optim.lr_scheduler import LambdaLR, MultiStepLR, ReduceLROnPlateau, StepLR
 
-from config.trainer.trainer_config import TrainerConfig
+from config.trainer_config import TrainerConfig
 from tools.scheduler import build_scheduler
 
 

@@ -2,7 +2,7 @@
 
 import yaml
 
-from config.transformation.base_transformation_config import TransformationConfig
+from config.transformation_config import TransformationConfig
 from transformation.train_val.casia_webface_train_val_transformation import (
     CasiaWebFaceTrainTransformation,
 )

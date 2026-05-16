@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
+from config.eval_dataset_config import EvalDatasetConfig
 from dataset.eval.lfw_pairs_dataset import LFWPairsDataset
 from tests.conftest import _PassthroughTransformation
 

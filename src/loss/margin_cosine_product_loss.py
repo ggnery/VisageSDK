@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from config.loss.base_loss_config import LossConfig
+from config.loss_config import LossConfig
 from loss.base_loss import BaseLoss
 
 
@@ -25,14 +25,18 @@ class MarginCosineProductLoss(BaseLoss):
 
     @override
     def forward(self, embeddings: torch.Tensor, y_true: torch.Tensor) -> tuple[torch.Tensor, dict]:
-        cosine = F.linear(F.normalize(embeddings), F.normalize(self.weight))
+        # Clamp guards against tiny [-1, 1] excursions from F.normalize that get
+        # amplified by `self.s` (e.g. 64) when the cross-entropy is applied.
+        cosine = F.linear(F.normalize(embeddings), F.normalize(self.weight)).clamp(-1.0 + 1e-7, 1.0 - 1e-7)
         one_hot = F.one_hot(y_true.long(), num_classes=self.out_features).float()
 
         output = self.s * (cosine - one_hot * self.m)
         loss = self.criterion(output, y_true)
 
         with torch.no_grad():
-            _, predicted = torch.max(output, 1)
+            # Accuracy is measured on the raw cosine (no margin), otherwise the
+            # margin penalty on the true class artificially lowers argmax recall.
+            _, predicted = torch.max(cosine, 1)
             correct = (predicted == y_true).float()
             accuracy = correct.mean()
 

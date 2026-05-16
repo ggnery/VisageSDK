@@ -2,16 +2,16 @@ import importlib
 from datetime import datetime
 from pathlib import Path
 
-from config.backbone.base_backbone_config import BackboneConfig
-from config.batch_sampler.base_batch_sampler_config import BatchSamplerConfig
-from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
-from config.dataset.train_val.base_train_val_dataset_config import TrainValDatasetConfig
-from config.early_stopper.base_early_stopper_config import EarlyStopperConfig
+from config.backbone_config import BackboneConfig
+from config.batch_sampler_config import BatchSamplerConfig
+from config.early_stopper_config import EarlyStopperConfig
 from config.env_config import ENVConfig
-from config.evaluator.base_evaluator_config import EvaluatorConfig
-from config.loss.base_loss_config import LossConfig
-from config.trainer.trainer_config import TrainerConfig
-from config.transformation.base_transformation_config import TransformationConfig
+from config.eval_dataset_config import EvalDatasetConfig
+from config.evaluator_config import EvaluatorConfig
+from config.loss_config import LossConfig
+from config.train_val_dataset_config import TrainValDatasetConfig
+from config.trainer_config import TrainerConfig
+from config.transformation_config import TransformationConfig
 from registry import (
     BACKBONES,
     DATASETS,

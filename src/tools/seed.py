@@ -24,6 +24,11 @@ def set_seed(seed: int | None, deterministic: bool = False) -> None:
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+        # `cudnn.deterministic` only covers cuDNN kernels — scatter/index ops
+        # need use_deterministic_algorithms, which in turn requires the
+        # CUBLAS workspace env var to avoid a runtime error.
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+        torch.use_deterministic_algorithms(True, warn_only=True)
 
 
 def make_dataloader_generator(seed: int | None) -> torch.Generator | None:

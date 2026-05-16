@@ -1,7 +1,9 @@
+from typing import override
+
 import torch
 from torch import nn
 
-from config.loss.base_loss_config import LossConfig
+from config.loss_config import LossConfig
 from loss.base_loss import BaseLoss
 
 
@@ -14,6 +16,7 @@ class CrossEntropyLoss(BaseLoss):
         self.linear = nn.Linear(self.embedding_size, self.num_classes, bias=self.use_bias)
         self.criterion = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
 
+    @override
     def forward(self, embeddings: torch.Tensor, y_true: torch.Tensor) -> tuple[torch.Tensor, dict]:
         logits = self.linear(embeddings)
         loss = self.criterion(logits, y_true)

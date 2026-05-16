@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 from torchvision import transforms
 
-from config.transformation.base_transformation_config import TransformationConfig
+from config.transformation_config import TransformationConfig
 
 
 class BaseTransformation(ABC):
