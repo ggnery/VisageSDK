@@ -19,6 +19,8 @@ dependencies = [
     "pillow>=12",
     "onnx>=1.20",
     "peft>=0.18",
+    "transformers>=4.50",
+    "ultralytics>=8.3",
 ]
 
 [dependency-groups]

@@ -1,0 +1,9 @@
+# Eval transformation YAML for DINOv3.
+#
+# Reused by LFWEvalTransformation (and any other eval transformation that
+# reads `normalize` directly from the config root). Same ImageNet mean/std
+# as the train YAML so train and eval see the same input distribution.
+
+normalize:
+    mean: [0.485, 0.456, 0.406]
+    std:  [0.229, 0.224, 0.225]

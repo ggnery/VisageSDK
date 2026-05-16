@@ -41,14 +41,14 @@ def cosine_similarity_matrix(query: torch.Tensor, gallery: torch.Tensor) -> torc
 
 
 def verification_accuracy(distances: np.ndarray, labels: np.ndarray, threshold: float) -> float:
-    """Binary accuracy treating pairs with distance <= threshold as 'same'.
+    """Binary accuracy treating pairs with distance < threshold as 'same'.
 
     Args:
         distances: (N,) pair distances
         labels: (N,) 1 for same-pair, 0 for different
-        threshold: distance threshold at or below which pairs are predicted same
+        threshold: distance threshold below which pairs are predicted same
     """
-    predictions = (distances <= threshold).astype(np.int32)
+    predictions = (distances < threshold).astype(np.int32)
     return float((predictions == labels).mean())
 
 
@@ -81,7 +81,11 @@ def roc_curve(
     distance space for easy reuse with `verification_accuracy`.
     """
     lo, hi = float(distances.min()), float(distances.max())
-    thresholds = np.linspace(lo, hi, n_thresholds)
+    # Extend past both extrema so strict `<` reaches (0, 0) at the smallest
+    # threshold (rejects everything) and (1, 1) at the largest (accepts
+    # everything, since all distances are strictly below hi + eps).
+    eps = max(1e-12, (hi - lo) * 1e-9)
+    thresholds = np.linspace(lo - eps, hi + eps, n_thresholds)
     pos_mask = labels == 1
     neg_mask = labels == 0
     n_pos = max(int(pos_mask.sum()), 1)
@@ -89,9 +93,7 @@ def roc_curve(
     tpr = np.zeros_like(thresholds)
     fpr = np.zeros_like(thresholds)
     for i, t in enumerate(thresholds):
-        # `<=` (not `<`) so the max-distance pair is included at t=hi —
-        # otherwise (TPR, FPR) never reaches (1.0, 1.0) and AUC underestimates.
-        pred_same = distances <= t
+        pred_same = distances < t
         tpr[i] = float(np.logical_and(pred_same, pos_mask).sum()) / n_pos
         fpr[i] = float(np.logical_and(pred_same, neg_mask).sum()) / n_neg
     return fpr, tpr, thresholds
