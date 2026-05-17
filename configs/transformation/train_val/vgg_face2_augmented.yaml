@@ -1,0 +1,31 @@
+# Aggressive augmentation profile for VGGFace2-pretrained backbones on
+# small datasets (~few hundred training images, e.g. ceia_custom_cropped).
+# Read by VGGFace2TrainTransformation/VGGFace2ValTransformation — same
+# class as `vgg_face2.yaml`, just stronger augmentation values.
+#
+# Differences vs vgg_face2.yaml:
+#   * random_horizontal_flip: 0.3 → 0.5
+#   * random_rotation:        10  → 20
+#   * color_jitter values:    0.1 → 0.3 (brightness/contrast/saturation)
+#   * random_resized_crop:    NEW — scale 0.7-1.0 + aspect-ratio jitter
+#
+# Normalization stays at [0.5, 0.5, 0.5] (VGGFace2 / facenet-pytorch convention).
+
+train:
+    normalize:
+        mean: [0.5, 0.5, 0.5]
+        std:  [0.5, 0.5, 0.5]
+    random_horizontal_flip: 0.5
+    random_rotation: 20
+    color_jitter:
+        brightness: 0.3
+        contrast: 0.3
+        saturation: 0.3
+    random_resized_crop:
+        scale: [0.7, 1.0]       # crop covers 70%-100% of the resized image
+        ratio: [0.85, 1.18]     # mild aspect-ratio jitter — face shape stays plausible
+
+val:
+    normalize:
+        mean: [0.5, 0.5, 0.5]
+        std:  [0.5, 0.5, 0.5]

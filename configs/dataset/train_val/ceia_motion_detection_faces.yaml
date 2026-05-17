@@ -1,0 +1,22 @@
+#=======================#=======================#=======================
+# These params are common to all train/val datasets and MUST be present
+#=======================#=======================#=======================
+# Segmented cow faces (RGBA PNG with transparent background — the dataset
+# loader does `Image.open(...).convert("RGB")`, so the alpha channel is
+# discarded and the background renders as black at training time).
+#
+# Built by `scripts/dedupe_and_split.py --val-frac 0.15 --test-frac 0.15`
+# (dedupe-aware: video frames are clustered by perceptual hash so adjacent
+# frames don't leak between splits).
+#
+# Per-class diversity is low — 36/178 classes have ≤2 visual clusters and
+# were dumped entirely into train (no val/test rows for those identities).
+# Use the regularized DINOv3 LoRA recipe to control overfit.
+#
+# Test split is on disk but NOT consumed by the trainer — it's reserved
+# for the IdentificationEvaluator probe (see configs/dataset/eval/).
+train_dir: "./datasets/ceia_motion_detection_faces_split/train"
+val_dir: "./datasets/ceia_motion_detection_faces_split/val"
+
+num_classes: 178
+#=======================#=======================#=======================
