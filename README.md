@@ -168,8 +168,8 @@ The trainer uses a slightly richer config (`TrainerConfig`) because it has struc
 
 | Kind | Registered names |
 | --- | --- |
-| Backbones | `inception_resnet_v1`, `inception_resnet_v2`, `inception_v4`, `mobilenetv3`, `lvface_vit_b` |
-| Losses | `triplet`, `center`, `cross_entropy`, `margin_cosine` |
+| Backbones | `inception_resnet_v1`, `inception_resnet_v2`, `inception_v4`, `mobilenetv3`, `lvface_vit_b`, `dinov3`, `megadescriptor` |
+| Losses | `triplet`, `center`, `cross_entropy`, `margin_cosine`, `arcface` |
 | Train/val datasets | `image_folder` (single class with `split="train"`/`"val"`) |
 | Eval datasets | `lfw_pairs`, `identification` |
 | Transformations | `vgg_face2_train`, `vgg_face2_val`, `casia_webface_train`, `casia_webface_val`, `lfw_eval` |

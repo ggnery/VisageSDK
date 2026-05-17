@@ -306,6 +306,70 @@ def _dinov3_heatmaps(backbone: torch.nn.Module, img_tensor: torch.Tensor, method
     return heatmaps
 
 
+def _peel_megadescriptor(backbone: torch.nn.Module) -> torch.nn.Module:
+    """Unwrap LoRA + MegaDescriptorBackbone → return the raw timm Swin model."""
+    inner = backbone
+    inner = getattr(inner, "base_model", inner)
+    inner = getattr(inner, "model", inner)  # MegaDescriptorBackbone
+    return inner.model  # timm Swin model
+
+
+def _megadescriptor_heatmaps(backbone: torch.nn.Module, img_tensor: torch.Tensor,
+                              ref_emb: torch.Tensor | None) -> dict[str, np.ndarray]:
+    """Grad-CAM on the last Swin block's output (highest-res semantic features
+    just before the global pool). Handles timm Swin's (B, H, W, C) layout
+    natively; falls back to (B, L, C) reshape if a future timm version flips
+    back to token-sequence outputs.
+    """
+    timm_model = _peel_megadescriptor(backbone)
+    target_layer = timm_model.layers[-1].blocks[-1]
+
+    activations: dict[str, torch.Tensor] = {}
+    gradients: dict[str, torch.Tensor] = {}
+
+    def fwd_hook(_m: torch.nn.Module, _i: Any, o: torch.Tensor) -> None:
+        activations["v"] = o
+
+    def bwd_hook(_m: torch.nn.Module, _gi: Any, go: tuple[torch.Tensor, ...]) -> None:
+        gradients["v"] = go[0]
+
+    fh = target_layer.register_forward_hook(fwd_hook)
+    bh = target_layer.register_full_backward_hook(bwd_hook)
+    try:
+        backbone.zero_grad(set_to_none=True)
+        img_grad = img_tensor.clone().detach().requires_grad_(True)
+        emb = backbone(img_grad)
+        target, label = _grad_target(emb, ref_emb)
+        target.backward()
+    finally:
+        fh.remove()
+        bh.remove()
+
+    a = activations["v"]
+    g = gradients["v"]
+
+    if a.ndim == 4:
+        # timm Swin native: (B, H, W, C). GAP over spatial → channel weights.
+        weights = g.mean(dim=(1, 2), keepdim=True)            # (B, 1, 1, C)
+        cam = (weights * a).sum(dim=-1).clamp(min=0)          # (B, H, W)
+    elif a.ndim == 3:
+        # Fallback: (B, L, C) with L assumed square.
+        b, length, c = a.shape
+        h = w = int(round(length ** 0.5))
+        if h * w != length:
+            raise ValueError(f"non-square Swin token grid: L={length}")
+        a4 = a.view(b, h, w, c)
+        g4 = g.view(b, h, w, c)
+        weights = g4.mean(dim=(1, 2), keepdim=True)
+        cam = (weights * a4).sum(dim=-1).clamp(min=0)
+    else:
+        raise ValueError(f"unexpected activation shape {a.shape} for Swin block")
+
+    cam = cam[0].detach().cpu().numpy()
+    cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
+    return {f"gradcam (swin last block): {label}": cam}
+
+
 def _gradcam_heatmaps(backbone: torch.nn.Module, img_tensor: torch.Tensor,
                       ref_emb: torch.Tensor | None,
                       target_layer_name: str = "block8") -> dict[str, np.ndarray]:
@@ -376,12 +440,15 @@ def _grid_to_overlay(grid: np.ndarray, base_img: Image.Image, alpha: float = 0.4
 
 
 def _save_panel(out_path: Path, base: Image.Image, heatmaps: dict[str, np.ndarray],
-                title: str | None = None) -> None:
+                title: str | None = None, simple: bool = False) -> None:
+    """Render the figure. `simple=True` drops the raw NxN heatmap columns and
+    keeps only [input | overlay_1 | overlay_2 | ...] — much less cluttered when
+    you just want to compare attention regions, not pixel-level patch maps."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    n = 1 + 2 * len(heatmaps)
+    n = 1 + (len(heatmaps) if simple else 2 * len(heatmaps))
     fig, axes = plt.subplots(1, n, figsize=(3 * n, 3.4))
     if n == 1:
         axes = [axes]
@@ -390,13 +457,19 @@ def _save_panel(out_path: Path, base: Image.Image, heatmaps: dict[str, np.ndarra
     axes[0].axis("off")
     for i, (name, grid) in enumerate(heatmaps.items()):
         overlay = _grid_to_overlay(grid, base)
-        axes[1 + 2 * i].imshow(overlay)
-        axes[1 + 2 * i].set_title(f"{name} overlay")
-        axes[1 + 2 * i].axis("off")
-        axes[2 + 2 * i].imshow(grid, cmap="jet")
-        gh, gw = grid.shape
-        axes[2 + 2 * i].set_title(f"{name} ({gh}x{gw})")
-        axes[2 + 2 * i].axis("off")
+        if simple:
+            ax = axes[1 + i]
+            ax.imshow(overlay)
+            ax.set_title(name)
+            ax.axis("off")
+        else:
+            axes[1 + 2 * i].imshow(overlay)
+            axes[1 + 2 * i].set_title(f"{name} overlay")
+            axes[1 + 2 * i].axis("off")
+            axes[2 + 2 * i].imshow(grid, cmap="jet")
+            gh, gw = grid.shape
+            axes[2 + 2 * i].set_title(f"{name} ({gh}x{gw})")
+            axes[2 + 2 * i].axis("off")
     if title:
         fig.suptitle(title, fontsize=11)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -430,6 +503,8 @@ def main() -> None:
     p.add_argument("--output", type=Path, default=Path("./heatmaps"))
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--title", default=None, help="optional title for the saved panel")
+    p.add_argument("--simple", action="store_true",
+                   help="drop raw NxN grid columns; keep only [input | overlay_1 | overlay_2 ...]")
     args = p.parse_args()
 
     run_dir = _resolve_run_dir(args)
@@ -460,11 +535,14 @@ def main() -> None:
     elif backbone_name == "inception_resnet_v1":
         heatmaps = _gradcam_heatmaps(backbone, img_tensor, ref_emb,
                                      target_layer_name=args.cnn_target_layer)
+    elif backbone_name == "megadescriptor":
+        heatmaps = _megadescriptor_heatmaps(backbone, img_tensor, ref_emb)
     else:
         raise NotImplementedError(f"no heatmap path for backbone {backbone_name!r}")
 
     out_file = args.output / f"{args.image.stem}__{run_dir.name}.png"
-    _save_panel(out_file, img_pil, heatmaps, title=args.title or f"{run_dir.name}  ({backbone_name})")
+    _save_panel(out_file, img_pil, heatmaps, title=args.title or f"{run_dir.name}  ({backbone_name})",
+                simple=args.simple)
     print(f"[ok] wrote {out_file}")
 
 

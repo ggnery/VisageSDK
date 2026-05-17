@@ -1,0 +1,33 @@
+#=======================#=======================#=======================
+# Common backbone keys (required)
+#=======================#=======================#=======================
+# MegaDescriptor-T (Swin Tiny, 28.3M params, 768 native feature dim) —
+# wildlife re-id pretraining. Best transfer prior for any animal re-id
+# task in the framework. Native input size 224×224, normalization
+# [0.5, 0.5, 0.5] (see configs/transformation/.../megadescriptor.yaml).
+#
+# embedding_size = 768 keeps the feature head as nn.Identity() so the
+# embeddings live exactly on the MegaDescriptor manifold — recommended
+# for LoRA fine-tunes. Set to a smaller value to insert a Linear+BN
+# projection head (`modules_to_save: ["feature"]` then becomes useful).
+input_size: [224, 224]
+embedding_size: 768
+device: cuda
+#=======================#=======================#=======================
+
+#=======================#=======================#=======================
+# MegaDescriptor-specific
+#
+# `model_name` is the timm id (timm.create_model(name, pretrained=True,
+# num_classes=0) downloads weights from BVRA on the HuggingFace hub).
+# Other variants share this YAML — bump input_size to [384, 384] and
+# pick the matching id for L-384:
+#   hf-hub:BVRA/MegaDescriptor-T-224  (Tiny,  768d, this file)
+#   hf-hub:BVRA/MegaDescriptor-S-224  (Small, 768d)
+#   hf-hub:BVRA/MegaDescriptor-B-224  (Base,  1024d → set embedding_size: 1024)
+#   hf-hub:BVRA/MegaDescriptor-L-224  (Large, 1536d → set embedding_size: 1536)
+#   hf-hub:BVRA/MegaDescriptor-L-384  (Large, 1536d, input [384,384])
+# License: MIT.
+#=======================#=======================#=======================
+model_name: hf-hub:BVRA/MegaDescriptor-T-224
+#=======================#=======================#=======================

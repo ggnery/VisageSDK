@@ -1,0 +1,19 @@
+#=======================#=======================#=======================
+# Common backbone keys (required)
+#=======================#=======================#=======================
+# MegaDescriptor-L-384 (Swin Large @ 384×384, 228.8M params, 1536 native
+# feature dim) — the strongest wildlife re-id pretrained backbone. Use
+# this when you want maximum transfer capacity and don't mind the
+# 8× compute vs Tiny (~3-4× a 24GB GPU for batch=16 AMP fp16).
+#
+# embedding_size = 1536 (native) keeps the feature head as nn.Identity().
+input_size: [384, 384]
+embedding_size: 1536
+device: cuda
+#=======================#=======================#=======================
+
+#=======================#=======================#=======================
+# MegaDescriptor-specific. License: MIT.
+#=======================#=======================#=======================
+model_name: hf-hub:BVRA/MegaDescriptor-L-384
+#=======================#=======================#=======================

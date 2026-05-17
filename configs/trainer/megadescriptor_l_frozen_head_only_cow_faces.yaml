@@ -1,0 +1,114 @@
+# MegaDescriptor-L-384 como feature extractor PURO — backbone 100% frozen,
+# só treina (a) o feature head Linear+BN e (b) a matriz CosFace da loss.
+#
+# Padrão estilo IncResV1 + CosFace que você já rodou — mas com features
+# pretreinadas em wildlife re-id (228M params Swin-L) em vez de VGGFace2.
+#
+# Capacity treinável total ≈ 880K params (vs 5.4M no SOTA v1 e 3M no v2):
+#   * feature head Linear(1536→512) + BN1d(512)        ~787K
+#   * CosFace classifier weight (512 × 178)             ~91K
+#
+# Como mata o overfit dos runs anteriores:
+#   * Backbone NÃO se adapta — features de MegaDescriptor ficam intactas
+#   * Capacity treinável é 3-6× menor que nos runs com LoRA
+#   * train_acc provavelmente NÃO chegará a 100% (não tem capacidade
+#     pra memorizar 15k imagens com só 880K params expressivos)
+#
+# Resposta científica que esse run dá: "as features pretreinadas do
+# MegaDescriptor são úteis pra cow re-id?" Se rank-1 ficar próximo de
+# 70-78%, sim. Se desabar para <60%, MegaDescriptor pretraining não
+# transfere bem mesmo.
+#
+# Pair this trainer YAML with:
+#   BACKBONE_CONFIG=./configs/backbone/megadescriptor_l_384_head.yaml
+#   TRAIN_VAL_TRANSFORMATION_CONFIG=./configs/transformation/train_val/megadescriptor.yaml
+#   LOSS_CONFIG=./configs/loss/margin_cosine_product.yaml    (CosFace é mais estável
+#                                                              que ArcFace pra setup
+#                                                              de head-only)
+#   TRAIN_VAL_DATASET_CONFIG=./configs/dataset/train_val/ceia_motion_detection_faces.yaml
+
+optimizer:
+  type: Adam
+  params:
+    lr: 1.0e-3              # head pode ter LR alto — não tem backbone pra estabilizar
+    weight_decay: 1.0e-4
+
+  # Mesmo padrão do partial_unfreeze_finetune.yaml:
+  param_groups:
+    - pattern: "loss.*"
+      lr: 1.0e-3            # CosFace weight matrix aprende do zero
+    - pattern: "backbone.feature.*"
+      lr: 1.0e-3            # projection head também aprende do zero
+
+lr_schedule:
+  type: StepLR
+  params:
+    step_size: 10
+    gamma: 0.5
+
+dataloader:
+  train:
+    batch_size: 32
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 32
+    shuffle: False
+    num_workers: 2
+
+num_epochs: 30
+device: cuda
+
+checkpoint:
+  save:
+    dir: ./checkpoints/megadescriptor_l_frozen_head_only
+    frequency: 5
+  load:
+    path: null              # pesos vêm do HF via timm
+    backbone: False
+    loss: False
+    scheduler: False
+    optimizer: False
+
+freeze:
+  # Congela TUDO no backbone que NÃO seja o feature head.
+  # `feature.*` casa com `feature.0` (Linear) e `feature.1` (BatchNorm1d).
+  # O `model.*` (toda a Swin-L) fica congelado — patch_embed, blocks,
+  # downsample.reduction, norms — tudo.
+  except:
+    - "feature.*"
+
+# LoRA OFF — incompatível com `freeze:` no framework, e queremos
+# justamente o regime de capacity mínima.
+lora:
+  enabled: false
+
+seed: 42
+deterministic: false
+
+amp:
+  enabled: true
+  dtype: float16
+
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+logging:
+  tensorboard: true
+  log_dir: null
+
+periodic_eval:
+  enabled: true
+  every_n_epochs: 5
+  dataset: identification
+  dataset_config: ./configs/dataset/eval/ceia_motion_detection_faces.yaml
+  transformation: lfw_eval
+  transformation_config: ./configs/transformation/eval/megadescriptor.yaml
+  evaluator: identification
+  evaluator_config: ./configs/evaluator/identification.yaml
+
+onnx_export:
+  enabled: true
+  opset: 17
+  dynamic_batch: true

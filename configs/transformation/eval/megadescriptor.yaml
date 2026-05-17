@@ -1,0 +1,9 @@
+# Eval transformation YAML for MegaDescriptor.
+#
+# Same mean/std=[0.5]*3 as the train YAML — BVRA's model cards use this
+# for both pretraining and inference. ImageNet stats would shift the
+# input distribution and degrade transfer quality.
+
+normalize:
+    mean: [0.5, 0.5, 0.5]
+    std:  [0.5, 0.5, 0.5]
