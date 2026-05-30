@@ -6,7 +6,7 @@ import torch
 from torch import Tensor, nn
 
 from backbone.base_backbone import BaseBackbone
-from config.backbone.base_backbone_config import BackboneConfig
+from config.backbone_config import BackboneConfig
 
 
 def _make_divisible(v: float, divisor: int = 8) -> int:

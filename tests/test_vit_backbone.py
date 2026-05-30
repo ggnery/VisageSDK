@@ -14,7 +14,7 @@ import torch
 import yaml
 
 from backbone.vit import LVFaceVisionTransformer
-from config.backbone.base_backbone_config import BackboneConfig
+from config.backbone_config import BackboneConfig
 
 
 @pytest.fixture

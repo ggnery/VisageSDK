@@ -1,0 +1,28 @@
+# Transformation YAML for MegaDescriptor fine-tunes.
+#
+# BVRA's MegaDescriptor model cards specify normalization mean=std=[0.5]*3
+# (i.e. shift to [-1, 1]) — NOT ImageNet stats. Using ImageNet mean/std
+# shifts the input distribution away from what the Swin saw during the
+# wildlife re-id pretraining and silently hurts transfer quality.
+#
+# Augmentation mirrors dinov3_augmented.yaml — same low-intra-class
+# diversity story applies (frame-derived cattle dataset).
+
+train:
+    normalize:
+        mean: [0.5, 0.5, 0.5]
+        std:  [0.5, 0.5, 0.5]
+    random_horizontal_flip: 0.5
+    random_rotation: 25
+    color_jitter:
+        brightness: 0.3
+        contrast: 0.3
+        saturation: 0.3
+    random_resized_crop:
+        scale: [0.7, 1.0]
+        ratio: [0.75, 1.3333]
+
+val:
+    normalize:
+        mean: [0.5, 0.5, 0.5]
+        std:  [0.5, 0.5, 0.5]

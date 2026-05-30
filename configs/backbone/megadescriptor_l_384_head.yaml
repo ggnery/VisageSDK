@@ -1,0 +1,17 @@
+#=======================#=======================#=======================
+# Common backbone keys (required)
+#=======================#=======================#=======================
+# MegaDescriptor-L-384 com projection head TREINÁVEL.
+# embedding_size 512 != native 1536 → Linear(1536→512) + BN é inserido
+# como `feature` head. Pareie com `modules_to_save: ["feature"]` no LoRA
+# YAML pra full-finetune essa head.
+#
+# Padrão SOTA pra animal re-id: backbone grande pretreinado em wildlife
+# + adapter LoRA + head treinável + ArcFace cosine warmup.
+input_size: [384, 384]
+embedding_size: 512
+device: cuda
+#=======================#=======================#=======================
+
+model_name: hf-hub:BVRA/MegaDescriptor-L-384
+#=======================#=======================#=======================

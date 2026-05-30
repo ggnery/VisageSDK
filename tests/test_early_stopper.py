@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from config.early_stopper.base_early_stopper_config import EarlyStopperConfig
+from config.early_stopper_config import EarlyStopperConfig
 from early_stopper.adaptative_early_stopper import AdaptativeEarlyStopper
 
 

@@ -2,7 +2,7 @@ import random
 from typing import override
 
 from batch_sampler.base_batch_sampler import BaseBatchSampler
-from config.batch_sampler.base_batch_sampler_config import BatchSamplerConfig
+from config.batch_sampler_config import BatchSamplerConfig
 from dataset.train_val.base_train_val_dataset import BaseTrainValDataset
 
 
@@ -45,11 +45,17 @@ class FacenetBatchSampler(BaseBatchSampler):
             batch_identities = identity_order[i : i + self.num_identities_per_batch]
 
             if len(batch_identities) < self.num_identities_per_batch:
-                # Pad last partial batch with replacement (sample would fail when
-                # remaining > num_valid_identities).
+                # Pad last partial batch without repeating identities already in
+                # the batch — duplicates would break the P×K invariant (same
+                # identity sampled twice can produce overlapping image picks).
                 remaining = self.num_identities_per_batch - len(batch_identities)
-                extra_identities = self._rng.choices(self.valid_identities, k=remaining)
-                batch_identities.extend(extra_identities)
+                candidates = [ident for ident in self.valid_identities if ident not in batch_identities]
+                if len(candidates) >= remaining:
+                    batch_identities.extend(self._rng.sample(candidates, remaining))
+                else:
+                    # Fewer unique candidates than slots — take all and accept
+                    # the smaller-than-target batch rather than duplicating.
+                    batch_identities.extend(candidates)
 
             batch_indices = []
             for identity in batch_identities:

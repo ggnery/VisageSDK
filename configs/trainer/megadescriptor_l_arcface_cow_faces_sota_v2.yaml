@@ -1,0 +1,99 @@
+# MegaDescriptor-L-384 SOTA v2 — regularização agressiva pra controlar
+# o overfit que destroçou o v1 (train_acc 100% no epoch 3, rank-1 peak
+# no epoch 10 = 77.8% mas best.pth salvou epoch 16 → eval em 73.4%).
+#
+# Mudanças vs SOTA v1 (todas reduzindo capacity/pressão de memorização):
+#   lr:                  5.0e-4 → 1.0e-4   (5× menor; ArcFace cold-start)
+#   weight_decay:        1.0e-4 → 1.0e-3   (10× maior; LoRA tolera bem)
+#   ArcFace m:           0.5    → 0.35     (margem suavizada — usa arcface_regularized.yaml)
+#   LoRA dropout:        0.1    → 0.25     (per-adapter regularization)
+#   LoRA rank:           16     → 8        (metade da capacidade adapter)
+#   Aug:                 normal → strong   (usa megadescriptor_strong_aug.yaml)
+#   num_epochs:          50     → 40       (overfit começa cedo; menos espaço pra piorar)
+#
+# Pair this trainer YAML with:
+#   BACKBONE_CONFIG=./configs/backbone/megadescriptor_l_384_head.yaml
+#   TRAIN_VAL_TRANSFORMATION_CONFIG=./configs/transformation/train_val/megadescriptor_strong_aug.yaml
+#   LOSS_CONFIG=./configs/loss/arcface_regularized.yaml
+#   TRAIN_VAL_DATASET_CONFIG=./configs/dataset/train_val/ceia_motion_detection_faces.yaml
+
+optimizer:
+  type: AdamW
+  params:
+    lr: 1.0e-4
+    weight_decay: 1.0e-3
+
+lr_schedule:
+  type: CosineWarmup
+  params:
+    warmup_epochs: 5
+    total_epochs: 40
+    start_factor: 0.01
+    eta_min: 1.0e-6
+
+dataloader:
+  train:
+    batch_size: 16
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 16
+    shuffle: False
+    num_workers: 2
+
+num_epochs: 40
+device: cuda
+
+checkpoint:
+  save:
+    dir: ./checkpoints/megadescriptor_l_arcface_cow_faces_sota_v2
+    frequency: 5
+  load:
+    path: null
+    backbone: False
+    loss: False
+    scheduler: False
+    optimizer: False
+
+lora:
+  enabled: true
+  rank: 8                # was 16 — metade da capacity
+  alpha: 16.0            # ratio alpha/rank=2 mantido
+  dropout: 0.25          # was 0.1 — bem mais agressivo
+  target_modules:
+    - "qkv"
+    - "attn.proj"
+    - "fc1"
+    - "fc2"
+  modules_to_save:
+    - "feature"
+
+seed: 42
+deterministic: false
+
+amp:
+  enabled: true
+  dtype: float16
+
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+logging:
+  tensorboard: true
+  log_dir: null
+
+periodic_eval:
+  enabled: true
+  every_n_epochs: 5
+  dataset: identification
+  dataset_config: ./configs/dataset/eval/ceia_motion_detection_faces.yaml
+  transformation: lfw_eval
+  transformation_config: ./configs/transformation/eval/megadescriptor.yaml
+  evaluator: identification
+  evaluator_config: ./configs/evaluator/identification.yaml
+
+onnx_export:
+  enabled: true
+  opset: 17
+  dynamic_batch: true

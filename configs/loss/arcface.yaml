@@ -1,0 +1,14 @@
+#=======================#=======================#=======================
+# ArcFace (additive angular margin) — Deng et al. CVPR 2019.
+#
+# Canonical hyperparameters for face/identity recognition:
+#   s = 30-64 (scale)
+#   m = 0.5 radians (~28.6° angular margin)
+# For closed-set ID with limited intra-class diversity (cattle / small face
+# datasets), s=30 + m=0.5 is the sweet spot — less peaky than s=64.
+#=======================#=======================#=======================
+device: cuda
+s: 30.0
+m: 0.50
+easy_margin: false
+#=======================#=======================#=======================

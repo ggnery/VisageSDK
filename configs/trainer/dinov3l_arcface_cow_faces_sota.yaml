@@ -1,0 +1,109 @@
+# SOTA recipe for the cow-face dataset:
+#   * Backbone: DINOv3-L native (1024-dim, no projection head) — +2-4pp
+#     over ViT-B from extra pretraining capacity.
+#   * Loss: ArcFace (additive angular margin) — modern FR standard,
+#     edges out CosFace by 0.5-2pp on most benchmarks.
+#   * LoRA rank=8/alpha=16 — more adapter capacity than v1/v2 (justified
+#     by the larger backbone and the harder ArcFace objective).
+#   * Cosine LR with 5-epoch linear warmup over 40 total epochs — the
+#     warmup is critical for ArcFace: cold-start cosine + angular margin
+#     usually diverges.
+#   * Strong-but-not-extreme augmentation (reuse dinov3_augmented.yaml).
+#   * batch_size 16 — keeps VRAM under ~16 GB for ViT-L + AMP fp16.
+#
+# Pair this trainer YAML with:
+#   BACKBONE_CONFIG=./configs/backbone/dinov3_vitl16_native.yaml
+#   TRAIN_VAL_TRANSFORMATION_CONFIG=./configs/transformation/train_val/dinov3_augmented.yaml
+#   LOSS_CONFIG=./configs/loss/arcface.yaml
+#   TRAIN_VAL_DATASET_CONFIG=./configs/dataset/train_val/ceia_motion_detection_faces.yaml
+#
+# After training, run standalone eval against the train-gallery layout
+# (configs/dataset/eval/ceia_motion_detection_faces_train_gallery.yaml)
+# to get the deployment-realistic rank-1 / mAP.
+
+optimizer:
+  type: AdamW
+  params:
+    lr: 5.0e-4
+    weight_decay: 1.0e-4
+
+lr_schedule:
+  type: CosineWarmup
+  params:
+    warmup_epochs: 5
+    total_epochs: 40
+    start_factor: 0.01
+    eta_min: 1.0e-6
+
+dataloader:
+  train:
+    batch_size: 16
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 16
+    shuffle: False
+    num_workers: 2
+
+num_epochs: 40
+device: cuda
+
+checkpoint:
+  save:
+    dir: ./checkpoints/dinov3l_arcface_cow_faces_sota
+    frequency: 5
+  load:
+    path: null
+    backbone: False
+    loss: False
+    scheduler: False
+    optimizer: False
+
+lora:
+  enabled: true
+  rank: 8
+  alpha: 16.0
+  dropout: 0.1
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "up_proj"
+    - "down_proj"
+  # embedding_size == native hidden_size (1024) so feature head is Identity —
+  # nothing to fully fine-tune outside the LoRA adapters.
+  modules_to_save: []
+
+seed: 42
+deterministic: false
+
+amp:
+  enabled: true
+  dtype: float16
+
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+logging:
+  tensorboard: true
+  log_dir: null
+
+# Periodic eval uses the val-gallery layout (faster, ~3k images per pass)
+# for inline comparison with v1/v2. After training, run standalone eval
+# against the train-gallery layout for the deployment-realistic number.
+periodic_eval:
+  enabled: true
+  every_n_epochs: 5
+  dataset: identification
+  dataset_config: ./configs/dataset/eval/ceia_motion_detection_faces.yaml
+  transformation: lfw_eval
+  transformation_config: ./configs/transformation/eval/dinov3.yaml
+  evaluator: identification
+  evaluator_config: ./configs/evaluator/identification.yaml
+
+onnx_export:
+  enabled: true
+  opset: 17
+  dynamic_batch: true

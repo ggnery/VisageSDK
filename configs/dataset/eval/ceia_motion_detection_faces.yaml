@@ -1,0 +1,10 @@
+# IdentificationEvaluator layout for the cow-face dataset.
+# Closed-set: gallery = val split, probe = test split (same 178 identities,
+# both unseen during training).
+#
+# Built by:
+#   uv run python scripts/build_eval_layout.py \
+#       --src ./datasets/ceia_motion_detection_faces_split \
+#       --dst ./datasets/ceia_motion_detection_faces_eval \
+#       --gallery-split val --probe-split test
+eval_dir: "./datasets/ceia_motion_detection_faces_eval"

@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 
 from backbone.base_backbone import BaseBackbone
-from config.backbone.base_backbone_config import BackboneConfig
+from config.backbone_config import BackboneConfig
 
 
 def _to_2tuple(x: int | tuple[int, int]) -> tuple[int, int]:

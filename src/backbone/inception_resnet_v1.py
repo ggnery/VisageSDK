@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 from backbone.base_backbone import BaseBackbone
-from config.backbone.base_backbone_config import BackboneConfig
+from config.backbone_config import BackboneConfig
 
 
 class BasicConv2d(nn.Module):

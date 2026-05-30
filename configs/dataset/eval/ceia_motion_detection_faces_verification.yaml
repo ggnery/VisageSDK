@@ -1,0 +1,32 @@
+# Verification eval (TAR@FAR / ROC-AUC / EER / LFW-style accuracy) for the
+# motion_detection_FACES dataset (cow face crops). Built from the held-out
+# test split.
+#
+# ABSOLUTE-CEILING protocol: every unique positive pair AND every unique
+# cross-class image pair from the test split.
+#
+# Built by:
+#   uv run python scripts/build_verification_pairs.py \
+#       --src ./datasets/ceia_motion_detection_faces_split/test \
+#       --dst ./datasets/ceia_motion_detection_faces_pairs \
+#       --n-folds 10 --exhaustive-negatives --ext png
+#
+# Header is the 3-token asymmetric form `<n_folds> <n_same> <n_diff>` that
+# LFWPairsDataset parses transparently. Totals:
+#   23,037 unique positives (all C(k,2) within each class with >=2 imgs)
+#       → 23,030 used (7 dropped to keep folds balanced)
+#   1,438,158 unique negatives (every cross-class image pair)
+#   Grand total: 1,461,180 pairs over 10 folds
+#   (142 classes contain images; 118 with >=2 imgs contribute positives)
+#
+# TAR@FAR resolution (roughly #negatives × FAR):
+#   - 1e-3 → ~1,438 negs at threshold (clean)
+#   - 1e-4 → ~144 (clean)
+#   - 1e-5 → ~14 (apertado)
+#   - 1e-6 → ~1.4 (limit of what 1710 test images can give)
+#
+# Caveats:
+#   - Raw `lfw_accuracy` is class-imbalanced (chuting "different" sempre
+#     dá ~98.4% acc). Trust EER, TAR@FAR, ROC-AUC instead.
+eval_dir: "./datasets/ceia_motion_detection_faces_pairs"
+pairs_path: "./datasets/ceia_motion_detection_faces_pairs/pairs.txt"

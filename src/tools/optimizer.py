@@ -4,7 +4,7 @@ from typing import Any
 from torch.optim import SGD, Adam, AdamW, Optimizer, RMSprop
 
 from backbone.base_backbone import BaseBackbone
-from config.trainer.trainer_config import TrainerConfig
+from config.trainer_config import TrainerConfig
 from loss.base_loss import BaseLoss
 
 _OPTIMIZER_CLASSES = {
@@ -72,6 +72,13 @@ def build_optimizer(model: BaseBackbone, loss: BaseLoss, config: TrainerConfig) 
     if config.optimizer_param_groups:
         groups = _build_param_groups(model, loss, config.optimizer_param_groups)
     else:
-        groups = [{"params": list(model.parameters())}, {"params": list(loss.parameters())}]
+        # Filter `requires_grad=False` so frozen params don't sit in the
+        # optimizer state — if they're later unfrozen mid-training they get
+        # initialized fresh (with the base optimizer LR) at re-add time.
+        groups = [
+            {"params": [p for p in model.parameters() if p.requires_grad]},
+            {"params": [p for p in loss.parameters() if p.requires_grad]},
+        ]
+        groups = [g for g in groups if g["params"]]
 
     return cls(groups, **config.optimizer_params)

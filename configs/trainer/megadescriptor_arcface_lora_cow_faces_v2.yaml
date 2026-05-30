@@ -1,0 +1,101 @@
+# MegaDescriptor-T + ArcFace LoRA fine-tune — v2 (com correções dos 3
+# problemas do v1 em runs/trains/2026-05-17T13-37-59):
+#
+#   1. Projection head treinável: pair com megadescriptor_t_224_head.yaml
+#      (embedding_size=512 != native 768 → Linear+BN), e adiciona
+#      `modules_to_save: ["feature"]` (+ ~394K params treináveis)
+#   2. LoRA rank 8 → 16 (alpha 16 → 32, ratio 2 mantido): +565K params
+#      treináveis a mais. Total ≈ 1.5M treináveis (vs 565K no v1)
+#   3. Schedule StepLR → CosineWarmup (5 epochs warmup → 45 epochs cosine):
+#      ArcFace cold-start sem warmup gera gradientes ruidosos no início
+#      (foi o que aconteceu no v1, train_loss começou em 18)
+#   4. num_epochs 30 → 50: v1 ainda subia rank-1 no epoch 30 (não convergiu)
+#
+# Pair this trainer YAML with:
+#   BACKBONE_CONFIG=./configs/backbone/megadescriptor_t_224_head.yaml
+#   TRAIN_VAL_TRANSFORMATION_CONFIG=./configs/transformation/train_val/megadescriptor.yaml
+#   LOSS_CONFIG=./configs/loss/arcface.yaml
+#   TRAIN_VAL_DATASET_CONFIG=./configs/dataset/train_val/ceia_motion_detection_faces.yaml
+
+optimizer:
+  type: AdamW
+  params:
+    lr: 5.0e-4
+    weight_decay: 1.0e-4
+
+lr_schedule:
+  type: CosineWarmup
+  params:
+    warmup_epochs: 5
+    total_epochs: 50
+    start_factor: 0.01
+    eta_min: 1.0e-6
+
+dataloader:
+  train:
+    batch_size: 32
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 32
+    shuffle: False
+    num_workers: 2
+
+num_epochs: 50
+device: cuda
+
+checkpoint:
+  save:
+    dir: ./checkpoints/megadescriptor_arcface_lora_cow_faces_v2
+    frequency: 5
+  load:
+    path: null
+    backbone: False
+    loss: False
+    scheduler: False
+    optimizer: False
+
+lora:
+  enabled: true
+  rank: 16
+  alpha: 32.0
+  dropout: 0.1
+  target_modules:
+    - "qkv"
+    - "attn.proj"
+    - "fc1"
+    - "fc2"
+  # Projection head fully-trainable — Linear(768→512) + BN1d. Essa é a
+  # alavanca que faltava no v1 pra reshape do subspace wildlife → cow.
+  modules_to_save:
+    - "feature"
+
+seed: 42
+deterministic: false
+
+amp:
+  enabled: true
+  dtype: float16
+
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+logging:
+  tensorboard: true
+  log_dir: null
+
+periodic_eval:
+  enabled: true
+  every_n_epochs: 5
+  dataset: identification
+  dataset_config: ./configs/dataset/eval/ceia_motion_detection_faces.yaml
+  transformation: lfw_eval
+  transformation_config: ./configs/transformation/eval/megadescriptor.yaml
+  evaluator: identification
+  evaluator_config: ./configs/evaluator/identification.yaml
+
+onnx_export:
+  enabled: true
+  opset: 17
+  dynamic_batch: true

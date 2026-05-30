@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from backbone.base_backbone import BaseBackbone
-from config.backbone.base_backbone_config import BackboneConfig
+from config.backbone_config import BackboneConfig
 
 
 class Conv2d(nn.Module):
@@ -194,14 +194,18 @@ class InceptionResNetV2(BaseBackbone):
             blocks.append(InceptionResNetC(2080, 0.20))
         blocks.append(InceptionResNetC(2080, activation=False))
         self.features = nn.Sequential(*blocks)
-        self.conv = Conv2d(2080, self.embedding_size, 1, stride=1, padding=0, bias=False)
         self.global_average_pooling = nn.AdaptiveAvgPool2d((1, 1))
         self.dropout = nn.Dropout(p=self.dropout_prob)
+        # Linear + BN1d (no activation) so embeddings can take negative values
+        # — required for cosine/L2 losses to use the full hypersphere.
+        self.last_linear = nn.Linear(2080, self.embedding_size, bias=False)
+        self.last_bn = nn.BatchNorm1d(self.embedding_size, eps=0.001, momentum=0.1)
 
     def forward(self, x):
         x = self.features(x)
-        x = self.conv(x)
         x = self.global_average_pooling(x)
         x = x.view(x.size(0), -1)
         x = self.dropout(x)
+        x = self.last_linear(x)
+        x = self.last_bn(x)
         return x

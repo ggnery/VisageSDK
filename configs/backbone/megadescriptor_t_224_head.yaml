@@ -1,0 +1,19 @@
+#=======================#=======================#=======================
+# Common backbone keys (required)
+#=======================#=======================#=======================
+# Variante do MegaDescriptor-T com projection head TREINÁVEL.
+# embedding_size != native_dim (768) → DinoV3-style: Linear(768→512) + BN
+# é inserido como `feature` head. Pareie com `modules_to_save: ["feature"]`
+# no LoRA YAML pra full-finetune essa head — única forma do modelo
+# reorganizar o subspace de embeddings de "wildlife genérico" pra "cow".
+#
+# Use este YAML quando o megadescriptor_t_224.yaml puro (sem head) sub-
+# performar — o problema típico é capacidade insuficiente de adaptação
+# (só ~565K params LoRA não é o bastante pra fechar um domain gap grande).
+input_size: [224, 224]
+embedding_size: 512
+device: cuda
+#=======================#=======================#=======================
+
+model_name: hf-hub:BVRA/MegaDescriptor-T-224
+#=======================#=======================#=======================

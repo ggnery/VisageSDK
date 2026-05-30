@@ -1,0 +1,114 @@
+# InceptionResNetV1 (VGGFace2 pretrained) + CosFace LoRA-less fine-tune
+# para o dataset de faces de vaca.
+#
+# Cuidados específicos do InceptionResNetV1 vs ViT/DINOv3:
+#   * Input nativo 160×160 — entre o 112 do LVFace e o 224 do DINOv3.
+#     Crops segmentados de vaca (~250-400 px) sofrem downscale moderado.
+#   * Pretreinado em VGGFace2 (~8k identidades humanas) — mesmo viés de
+#     "rosto humano" do LVFace, embora a CNN tenha mais inductive bias
+#     espacial que o ViT.
+#   * 22M params (vs LVFace 113M, DINOv3-B 86M, DINOv3-L 300M). Mais
+#     leve, treina mais rápido — costuma ser o backbone mais barato pra
+#     prototipar.
+#
+# Estratégia (mesma do partial_unfreeze_finetune.yaml, com periodic_eval):
+#   * Congelar quase tudo do backbone, deixar treinar:
+#       - last_linear (Linear 1792→512)
+#       - last_bn     (BN1d 512)
+#       - block8.*    (último Inception-ResNet block antes da head)
+#   * LR diferencial: loss head a 1e-3 (matriz CosFace nasce do zero),
+#     resto a 1e-5 (gentle nudge — VGGFace2 weights já estão num bom ponto
+#     pra inputs face-like).
+#   * Sem LoRA — não vale a pena num backbone CNN pequeno onde
+#     fine-tune parcial já é barato.
+#
+# Pair this trainer YAML with:
+#   BACKBONE_CONFIG=./configs/backbone/inception_resnet_v1.yaml
+#   TRAIN_VAL_TRANSFORMATION_CONFIG=./configs/transformation/train_val/vgg_face2_augmented.yaml
+#   LOSS_CONFIG=./configs/loss/margin_cosine_product.yaml   (CosFace s=30, m=0.4)
+#   TRAIN_VAL_DATASET_CONFIG=./configs/dataset/train_val/ceia_motion_detection_faces.yaml
+
+optimizer:
+  type: Adam
+  params:
+    lr: 1.0e-5
+    weight_decay: 1.0e-4
+
+  param_groups:
+    - pattern: "loss.*"
+      lr: 1.0e-3
+    - pattern: "backbone.last_linear*"
+      lr: 1.0e-5
+    - pattern: "backbone.last_bn*"
+      lr: 1.0e-5
+    - pattern: "backbone.block8.*"
+      lr: 1.0e-5
+
+lr_schedule:
+  type: StepLR
+  params:
+    step_size: 10
+    gamma: 0.5
+
+dataloader:
+  train:
+    batch_size: 32
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 32
+    shuffle: False
+    num_workers: 2
+
+num_epochs: 30
+device: cuda
+
+checkpoint:
+  save:
+    dir: ./checkpoints/incresv1_cosface_cow_faces
+    frequency: 5
+  load:
+    path: ./models/base/vggface2_wrapped.pth
+    backbone: True
+    loss: False           # head reinicia pro novo class set (178 vacas)
+    scheduler: False
+    optimizer: False
+
+freeze:
+  except:
+    - "last_linear*"
+    - "last_bn*"
+    - "block8.*"
+
+seed: 42
+deterministic: false
+
+amp:
+  enabled: true
+  dtype: float16
+
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+logging:
+  tensorboard: true
+  log_dir: null
+
+# Periodic eval val-gallery — comparável com v1/v2/SOTA do DINOv3 e o
+# LVFace+CosFace. Usa lfw.yaml (mean/std=0.5) que bate com o pretraining
+# face-like do InceptionResNetV1.
+periodic_eval:
+  enabled: true
+  every_n_epochs: 5
+  dataset: identification
+  dataset_config: ./configs/dataset/eval/ceia_motion_detection_faces.yaml
+  transformation: lfw_eval
+  transformation_config: ./configs/transformation/eval/lfw.yaml
+  evaluator: identification
+  evaluator_config: ./configs/evaluator/identification.yaml
+
+onnx_export:
+  enabled: true
+  opset: 17
+  dynamic_batch: true

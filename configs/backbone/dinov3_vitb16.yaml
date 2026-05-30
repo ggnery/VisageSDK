@@ -1,0 +1,40 @@
+#=======================#=======================#=======================
+# Common backbone keys (required)
+#=======================#=======================#=======================
+input_size: [224, 224]
+embedding_size: 512
+device: cuda
+#=======================#=======================#=======================
+
+#=======================#=======================#=======================
+# DINOv3-specific
+#
+# `model_name` is the HuggingFace hub id. First use downloads weights to
+# HF_HOME (or ~/.cache/huggingface/hub); subsequent runs read from cache.
+# Variants and their native hidden sizes:
+#   facebook/dinov3-vits16-pretrain-lvd1689m   →  384  (fastest)
+#   facebook/dinov3-vitb16-pretrain-lvd1689m   →  768
+#   facebook/dinov3-vitl16-pretrain-lvd1689m   → 1024
+#   facebook/dinov3-vith16-pretrain-lvd1689m   → 1280  (SwiGLU MLP — see
+#                                                LoRA YAML notes)
+#
+# `embedding_size` above is the output dim of the framework-side head
+# (Linear + BatchNorm1d) bridging DINOv3's hidden size → your desired
+# embedding. Set it to the native dim (e.g. 768 for ViT-B) to skip the
+# head entirely — useful when you only want to fine-tune with LoRA.
+#
+# `token`:
+#   cls   — use the [CLS] token (default; classic ViT pooling).
+#   mean  — average patch tokens, skipping CLS + register tokens. Sometimes
+#           gives smoother embeddings for retrieval but loses the global-summary
+#           inductive bias.
+#
+# `input_size` accepts any (H, W) where H and W are multiples of 16. Going
+# above the pretrained 224×224 triggers positional-embedding interpolation
+# inside the HF model (a minor accuracy hit but supported).
+# CC-BY-NC 4.0: DINOv3 weights are non-commercial. Check the license for
+# your use case before shipping.
+#=======================#=======================#=======================
+model_name: facebook/dinov3-vitb16-pretrain-lvd1689m
+token: cls
+#=======================#=======================#=======================

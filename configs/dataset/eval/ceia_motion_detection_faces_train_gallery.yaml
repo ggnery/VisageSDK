@@ -1,0 +1,15 @@
+# Deployment-realistic IdentificationEvaluator layout for the cow-face
+# dataset. Gallery = train (~14.9k reference images, all known cows),
+# probe = test (1,710 held-out images, same 178 identities).
+#
+# This mirrors a real farm deployment: you have a rich reference DB built
+# from collected images per cow, and a new camera frame to identify.
+# Numbers here are typically 3-8pp higher than the val-gallery layout
+# because each identity has ~83 reference images on average vs ~9.
+#
+# Built by:
+#   uv run python scripts/build_eval_layout.py \
+#       --src ./datasets/ceia_motion_detection_faces_split \
+#       --dst ./datasets/ceia_motion_detection_faces_eval_train_gallery \
+#       --gallery-split train --probe-split test
+eval_dir: "./datasets/ceia_motion_detection_faces_eval_train_gallery"

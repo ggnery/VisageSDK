@@ -1,0 +1,30 @@
+# Aggressive augmentation for DINOv3 LoRA fine-tune on small/low-diversity
+# datasets. Used together with `dinov3_lora_regularized.yaml` to combat the
+# overfit observed when training on ceia_motion_detection_clean_split (where
+# median clusters/class = 2, leaving little intra-class diversity).
+#
+# Compared to the default `dinov3.yaml`:
+#   * RandomResizedCrop adds per-sample scale + translation jitter
+#   * RandomRotation 10 → 25
+#   * ColorJitter 0.1 → 0.3 (brightness/contrast/saturation)
+#
+# Same ImageNet normalization (matches DINOv3 pretraining).
+
+train:
+    normalize:
+        mean: [0.485, 0.456, 0.406]
+        std:  [0.229, 0.224, 0.225]
+    random_horizontal_flip: 0.5
+    random_rotation: 25
+    color_jitter:
+        brightness: 0.3
+        contrast: 0.3
+        saturation: 0.3
+    random_resized_crop:
+        scale: [0.7, 1.0]      # crop covers 70%–100% of the resized image
+        ratio: [0.75, 1.3333]  # aspect ratio jitter (default torchvision range)
+
+val:
+    normalize:
+        mean: [0.485, 0.456, 0.406]
+        std:  [0.229, 0.224, 0.225]

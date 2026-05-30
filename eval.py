@@ -18,13 +18,17 @@ def main(env: ENVEvalConfig) -> None:
     print("=" * 50)
     print(f"{type(evaluator).__name__} RESULTS")
     print("=" * 50)
-    scalar_items = [(k, v) for k, v in results.items() if isinstance(v, (int, float))]
+    scalar_items = [
+        (k, v) for k, v in results.items() if isinstance(v, (int, float)) and not isinstance(v, bool)
+    ]
     width = max((len(k) for k, _ in scalar_items), default=0)
     for k, v in scalar_items:
         print(f"{k:<{width}} : {v:.6f}")
     # Note any non-scalar payloads (e.g. roc_curve points) so it's obvious
     # they're persisted in the JSON even though they don't fit the table.
-    non_scalar_keys = [k for k, v in results.items() if not isinstance(v, (int, float))]
+    non_scalar_keys = [
+        k for k, v in results.items() if not isinstance(v, (int, float)) or isinstance(v, bool)
+    ]
     if non_scalar_keys:
         print("-" * 50)
         for k in non_scalar_keys:

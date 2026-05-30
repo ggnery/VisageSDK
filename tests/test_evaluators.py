@@ -10,8 +10,8 @@ import math
 import pytest
 import yaml
 
-from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
-from config.evaluator.base_evaluator_config import EvaluatorConfig
+from config.eval_dataset_config import EvalDatasetConfig
+from config.evaluator_config import EvaluatorConfig
 from dataset.eval.identification_dataset import IdentificationDataset
 from dataset.eval.lfw_pairs_dataset import LFWPairsDataset
 from evaluator.identification_evaluator import IdentificationEvaluator

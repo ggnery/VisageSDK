@@ -1,10 +1,10 @@
 from pathlib import Path
 from typing import override
 
-from config.dataset.train_val.base_train_val_dataset_config import TrainValDatasetConfig
+from config.train_val_dataset_config import TrainValDatasetConfig
 from dataset.train_val.base_train_val_dataset import BaseTrainValDataset
 
-_VALID_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
+_VALID_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
 _SPLITS = ("train", "val")
 
 

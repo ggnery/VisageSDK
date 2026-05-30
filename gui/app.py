@@ -590,7 +590,9 @@ def _render_eval_results(results: dict) -> None:
     import pandas as pd
 
     scalars: dict[str, float] = {
-        k: float(v) for k, v in results.items() if isinstance(v, (int, float))
+        k: float(v)
+        for k, v in results.items()
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
     }
     if not scalars:
         st.json(results)

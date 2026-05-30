@@ -1,0 +1,104 @@
+# LoRA fine-tune for the DINOv3 ViT backbone.
+#
+# Pretrained DINOv3 weights are downloaded from the HuggingFace hub on the
+# first `AutoModel.from_pretrained` call inside DinoV3Backbone.__init__ —
+# no separate wrap_*_pretrained.py step is required. Subsequent runs read
+# from HF_HOME / ~/.cache/huggingface/.
+#
+# Strategy: freeze all DINOv3 weights, inject LoRA adapters into every
+# transformer block's attention + MLP. The framework-side `feature` head
+# (Linear + BN1d projecting native_dim → embedding_size) is fully fine-
+# tuned via `modules_to_save` so the embedding subspace can re-shape for
+# the new identity set.
+#
+# target_modules matches HF's Dinov3 module naming (same as Dinov2). For
+# DINOv3-H, the MLP uses SwiGLU and the leaf names differ — swap
+# `intermediate.dense` / `output.dense` for the SwiGLU names. Confirm
+# with the named_modules walk shown in the DinoV3Backbone docstring before
+# launching a long run.
+
+optimizer:
+  type: AdamW
+  params:
+    lr: 1.0e-3
+    weight_decay: 1.0e-4
+
+lr_schedule:
+  type: StepLR
+  params:
+    step_size: 10
+    gamma: 0.5
+
+dataloader:
+  train:
+    batch_size: 32
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 32
+    shuffle: False
+    num_workers: 2
+
+num_epochs: 30
+device: cuda
+
+checkpoint:
+  save:
+    dir: ./checkpoints/dinov3_lora_finetune
+    frequency: 5
+  load:
+    # No local checkpoint — DINOv3 weights load from the HF hub inside
+    # DinoV3Backbone.__init__. Leave this null unless you're resuming an
+    # interrupted LoRA fine-tune (then point at your own .pth).
+    path: null
+    backbone: False
+    loss: False
+    scheduler: False
+    optimizer: False
+
+lora:
+  enabled: true
+  rank: 8
+  alpha: 16.0
+  dropout: 0.0
+  # PEFT matches with `key.endswith(".<target>")`. DINOv3 in HF transformers
+  # uses the `*_proj` naming pattern for every Linear in attention + MLP.
+  # Confirm for other variants with:
+  #   from transformers import AutoModel; import torch.nn as nn
+  #   m = AutoModel.from_pretrained("<id>")
+  #   print(sorted({n.split('.')[-1] for n, mod in m.named_modules() if isinstance(mod, nn.Linear)}))
+  target_modules:
+    # Attention path (model.layer.N.attention.{q,k,v,o}_proj)
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    # MLP path (model.layer.N.mlp.{up,down}_proj — plain 2-layer MLP)
+    - "up_proj"
+    - "down_proj"
+
+  # Fully fine-tune the framework's projection head — adapter-only deltas
+  # inside DINOv3 blocks can't re-shape the final embedding subspace.
+  modules_to_save:
+    - "feature"
+
+seed: 42
+deterministic: false
+
+amp:
+  enabled: true
+  dtype: float16
+
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+logging:
+  tensorboard: true
+  log_dir: null
+
+onnx_export:
+  enabled: true
+  # DINOv3-H uses SwiGLU which prefers opset 18+; opset 17 is fine for S/B/L.
+  opset: 17
+  dynamic_batch: true

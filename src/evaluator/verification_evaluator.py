@@ -40,7 +40,12 @@ class VerificationEvaluator(BaseEvaluator):
         if distance_kind == "cosine":
             distances = pairwise_cosine_distance(emb_a, emb_b).numpy()
         elif distance_kind == "euclidean":
-            distances = pairwise_euclidean_distance(emb_a, emb_b).numpy()
+            # L2-normalize so euclidean distances on the unit hypersphere relate
+            # to cosine via d² = 2(1 − cos); without normalization, magnitudes
+            # dominate and thresholds aren't comparable across runs.
+            emb_a_n = torch.nn.functional.normalize(emb_a, p=2, dim=-1)
+            emb_b_n = torch.nn.functional.normalize(emb_b, p=2, dim=-1)
+            distances = pairwise_euclidean_distance(emb_a_n, emb_b_n).numpy()
         else:
             raise ValueError(f"Unknown distance kind: {distance_kind}")
 

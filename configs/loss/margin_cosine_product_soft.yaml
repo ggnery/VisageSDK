@@ -1,0 +1,12 @@
+#=======================#=======================#=======================
+# Softer CosFace for small / low-diversity datasets.
+#
+# Tighter margin (m=0.4) + high scale (s=30) on a small dataset makes
+# CosFace very punishing: train_loss collapses to 0 quickly while val_loss
+# stays high even when val_acc is decent. Softer params restore
+# generalization headroom.
+#=======================#=======================#=======================
+device: cuda
+s: 20.0  # was 30 — gentler logit peaking
+m: 0.20  # was 0.40 — easier angular margin
+#=======================#=======================#=======================

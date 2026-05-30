@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from backbone.base_backbone import BaseBackbone
-from config.evaluator.base_evaluator_config import EvaluatorConfig
+from config.evaluator_config import EvaluatorConfig
 from dataset.eval.base_eval_dataset import BaseEvalDataset
 
 

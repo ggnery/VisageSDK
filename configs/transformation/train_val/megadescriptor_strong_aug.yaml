@@ -1,0 +1,28 @@
+# Aug agressivo pra MegaDescriptor em dataset pequeno (14.9k imgs).
+#
+# Diferenças vs megadescriptor.yaml:
+#   * random_resized_crop scale [0.7,1.0] → [0.5,1.0]  (mais spatial jitter)
+#   * random_rotation 25 → 35
+#   * color_jitter 0.3 → 0.4
+#   * adiciona hue jitter (importante pra normalização [0.5,0.5,0.5])
+#
+# Normalização [0.5]*3 mantida (model card do BVRA).
+
+train:
+    normalize:
+        mean: [0.5, 0.5, 0.5]
+        std:  [0.5, 0.5, 0.5]
+    random_horizontal_flip: 0.5
+    random_rotation: 35
+    color_jitter:
+        brightness: 0.4
+        contrast: 0.4
+        saturation: 0.4
+    random_resized_crop:
+        scale: [0.5, 1.0]
+        ratio: [0.75, 1.3333]
+
+val:
+    normalize:
+        mean: [0.5, 0.5, 0.5]
+        std:  [0.5, 0.5, 0.5]

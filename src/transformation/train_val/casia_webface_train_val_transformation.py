@@ -2,7 +2,7 @@ from typing import override
 
 from torchvision import transforms
 
-from config.transformation.base_transformation_config import TransformationConfig
+from config.transformation_config import TransformationConfig
 from transformation.base_transformation import BaseTransformation
 
 

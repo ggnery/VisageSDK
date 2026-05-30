@@ -1,0 +1,91 @@
+# Regularized DINOv3 LoRA fine-tune.
+#
+# Differences vs `dinov3_lora_finetune.yaml`:
+#   * lr  1e-3 → 1e-4              (10× smaller, lets LoRA settle smoothly)
+#   * weight_decay 1e-4 → 1e-3     (10× higher, stronger weight regularization)
+#   * lora.rank   8 → 4            (half capacity, less overfit surface)
+#   * lora.alpha 16 → 8            (preserve alpha/rank = 2)
+#   * lora.dropout 0 → 0.1         (per-adapter dropout)
+#
+# Pair with `transformation/train_val/dinov3_augmented.yaml` for matching
+# data-side regularization (RandomResizedCrop + stronger color/rotation jitter).
+#
+# Use when the base `dinov3_lora_finetune.yaml` overfits — train_loss → 0
+# while val_loss plateaus high. Common signal: per-class visual diversity is
+# low (run scripts/dedupe_and_split.py to confirm via cluster counts).
+
+optimizer:
+  type: AdamW
+  params:
+    lr: 1.0e-4
+    weight_decay: 1.0e-3
+
+lr_schedule:
+  type: StepLR
+  params:
+    step_size: 10
+    gamma: 0.5
+
+dataloader:
+  train:
+    batch_size: 32
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 32
+    shuffle: False
+    num_workers: 2
+
+num_epochs: 30
+device: cuda
+
+checkpoint:
+  save:
+    dir: ./checkpoints/dinov3_lora_regularized
+    frequency: 5
+  load:
+    path: null
+    backbone: False
+    loss: False
+    scheduler: False
+    optimizer: False
+
+lora:
+  enabled: true
+  rank: 4
+  alpha: 8.0
+  dropout: 0.1
+  target_modules:
+    # Attention path (model.layer.N.attention.{q,k,v,o}_proj)
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    # MLP path (model.layer.N.mlp.{up,down}_proj)
+    - "up_proj"
+    - "down_proj"
+
+  # Fully fine-tune the framework's projection head — adapter-only deltas
+  # inside DINOv3 blocks can't re-shape the final embedding subspace.
+  modules_to_save:
+    - "feature"
+
+seed: 42
+deterministic: false
+
+amp:
+  enabled: true
+  dtype: float16
+
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+logging:
+  tensorboard: true
+  log_dir: null
+
+onnx_export:
+  enabled: true
+  opset: 17
+  dynamic_batch: true

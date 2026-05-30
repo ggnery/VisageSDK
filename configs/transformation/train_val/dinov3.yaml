@@ -1,0 +1,25 @@
+# Transformation YAML for DINOv3 fine-tune.
+#
+# DINOv3 was pretrained with ImageNet normalization, so the framework's
+# VGGFace2TrainTransformation / VGGFace2ValTransformation classes (which
+# read mean/std from this YAML) are reused — only the constants change.
+# Using the face-trained mean=std=[0.5] from vgg_face2.yaml shifts the
+# input distribution away from what DINOv3 expects and hurts fine-tune
+# quality, so keep the values below intact unless you know why you're
+# changing them.
+
+train:
+    normalize:
+        mean: [0.485, 0.456, 0.406]
+        std:  [0.229, 0.224, 0.225]
+    random_horizontal_flip: 0.5
+    random_rotation: 10
+    color_jitter:
+        brightness: 0.1
+        contrast: 0.1
+        saturation: 0.1
+
+val:
+    normalize:
+        mean: [0.485, 0.456, 0.406]
+        std:  [0.229, 0.224, 0.225]

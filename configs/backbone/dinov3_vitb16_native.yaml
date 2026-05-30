@@ -1,0 +1,18 @@
+#=======================#=======================#=======================
+# Common backbone keys (required)
+#=======================#=======================#=======================
+# Native DINOv3 ViT-B (768-dim) — embedding_size matches hidden_size, so
+# DinoV3Backbone uses nn.Identity() for the feature head (no Linear+BN
+# projection). Recommended for LoRA fine-tunes where we want embeddings
+# to stay close to the pretrained DINOv3 manifold.
+input_size: [224, 224]
+embedding_size: 768
+device: cuda
+#=======================#=======================#=======================
+
+#=======================#=======================#=======================
+# DINOv3-specific
+#=======================#=======================#=======================
+model_name: facebook/dinov3-vitb16-pretrain-lvd1689m
+token: cls
+#=======================#=======================#=======================

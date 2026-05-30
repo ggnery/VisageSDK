@@ -1,0 +1,27 @@
+# Stronger augmentation than dinov3_augmented.yaml — for datasets with
+# very low intra-class diversity (median ~4 clusters/class). Used together
+# with dinov3_lora_cow_faces_v2.yaml.
+#
+# Differences vs dinov3_augmented.yaml:
+#   * random_resized_crop scale [0.7, 1.0] → [0.5, 1.0]  (more spatial jitter)
+#   * random_rotation 25 → 35
+#   * color_jitter 0.3 → 0.4
+
+train:
+    normalize:
+        mean: [0.485, 0.456, 0.406]
+        std:  [0.229, 0.224, 0.225]
+    random_horizontal_flip: 0.5
+    random_rotation: 35
+    color_jitter:
+        brightness: 0.4
+        contrast: 0.4
+        saturation: 0.4
+    random_resized_crop:
+        scale: [0.5, 1.0]
+        ratio: [0.75, 1.3333]
+
+val:
+    normalize:
+        mean: [0.485, 0.456, 0.406]
+        std:  [0.229, 0.224, 0.225]

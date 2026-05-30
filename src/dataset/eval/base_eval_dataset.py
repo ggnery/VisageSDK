@@ -1,7 +1,7 @@
 from PIL import Image
 from torch.utils.data import Dataset
 
-from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
+from config.eval_dataset_config import EvalDatasetConfig
 from transformation.base_transformation import BaseTransformation
 
 

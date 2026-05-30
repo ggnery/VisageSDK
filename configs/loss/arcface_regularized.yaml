@@ -1,0 +1,16 @@
+#=======================#=======================#=======================
+# ArcFace regularizado — margem menor pra reduzir pressão de memorização.
+#
+# Padrão s=30, m=0.5 (Deng et al.) era pro Glint360K com 360k identidades
+# e milhões de imagens. Em dataset pequeno (15k imgs, 178 ids), m=0.5
+# força o modelo a apertar clusters angularmente além da informação que
+# os dados realmente carregam → memorização do trainset.
+#
+# Trade-off entre CosFace m=0.4 e ArcFace m=0.5: m=0.35 angular dá um
+# meio-termo discriminativo sem incentivar overfit.
+#=======================#=======================#=======================
+device: cuda
+s: 30.0
+m: 0.35       # was 0.5 — softer angular margin
+easy_margin: false
+#=======================#=======================#=======================

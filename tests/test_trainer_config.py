@@ -1,11 +1,11 @@
-"""Tests for config.trainer.trainer_config.TrainerConfig parsing."""
+"""Tests for config.trainer_config.TrainerConfig parsing."""
 
 from pathlib import Path
 
 import pytest
 import yaml
 
-from config.trainer.trainer_config import TrainerConfig
+from config.trainer_config import TrainerConfig
 
 
 def _minimal_trainer_yaml() -> dict:

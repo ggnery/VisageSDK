@@ -4,7 +4,7 @@ a `roles` array marking each image as "gallery" or "probe"."""
 from pathlib import Path
 from typing import override
 
-from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
+from config.eval_dataset_config import EvalDatasetConfig
 from dataset.eval.base_eval_dataset import BaseEvalDataset
 from transformation.base_transformation import BaseTransformation
 

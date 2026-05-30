@@ -4,7 +4,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 from torch.utils.data import Dataset
 
-from config.dataset.train_val.base_train_val_dataset_config import TrainValDatasetConfig
+from config.train_val_dataset_config import TrainValDatasetConfig
 from transformation.base_transformation import BaseTransformation
 
 
@@ -28,8 +28,13 @@ class BaseTrainValDataset(Dataset):
         self.label_map = defaultdict(list)
         for idx, (label, _) in enumerate(self.data):
             if label not in self.label_to_idx:
-                # Defensive fallback if a subclass's read_all_labels missed it.
-                self.label_to_idx[label] = len(self.label_to_idx)
+                # `read_all_labels` MUST return the sorted union of all labels
+                # across splits; if it misses one, label IDs become inconsistent
+                # across runs. Fail fast rather than silently appending.
+                raise KeyError(
+                    f"Label {label!r} found in data but not in label_to_idx — "
+                    "the subclass's read_all_labels is incomplete."
+                )
             self.label_map[self.label_to_idx[label]].append(idx)
 
         # Reject `num_classes` smaller than the actual count — loss head would

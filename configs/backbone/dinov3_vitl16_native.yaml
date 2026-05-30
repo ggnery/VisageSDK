@@ -1,0 +1,22 @@
+#=======================#=======================#=======================
+# Common backbone keys (required)
+#=======================#=======================#=======================
+# Native DINOv3 ViT-L (1024-dim) — embedding_size matches hidden_size, so
+# DinoV3Backbone uses nn.Identity() for the feature head. ViT-L has ~300M
+# params vs ViT-B's ~86M; on small datasets the extra pretraining capacity
+# translates to +2-4pp rank-1 with LoRA fine-tune.
+#
+# Memory note: with batch_size=16, AMP fp16, LoRA rank=8 this fits in
+# ~12-16 GB VRAM. If you run out, drop batch_size to 8 (and double the
+# effective lr to compensate if you care about wall-clock).
+input_size: [224, 224]
+embedding_size: 1024
+device: cuda
+#=======================#=======================#=======================
+
+#=======================#=======================#=======================
+# DINOv3-specific
+#=======================#=======================#=======================
+model_name: facebook/dinov3-vitl16-pretrain-lvd1689m
+token: cls
+#=======================#=======================#=======================

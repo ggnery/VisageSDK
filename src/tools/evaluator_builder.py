@@ -2,11 +2,11 @@ import importlib
 
 import torch
 
-from config.backbone.base_backbone_config import BackboneConfig
-from config.dataset.eval.base_eval_dataset_config import EvalDatasetConfig
+from config.backbone_config import BackboneConfig
 from config.env_eval_config import ENVEvalConfig
-from config.evaluator.base_evaluator_config import EvaluatorConfig
-from config.transformation.base_transformation_config import TransformationConfig
+from config.eval_dataset_config import EvalDatasetConfig
+from config.evaluator_config import EvaluatorConfig
+from config.transformation_config import TransformationConfig
 from registry import (
     BACKBONES,
     EVAL_DATASETS,

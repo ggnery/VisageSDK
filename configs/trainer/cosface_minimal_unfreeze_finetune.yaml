@@ -1,0 +1,86 @@
+# Regularized variant of partial_unfreeze_finetune.yaml for very small cow
+# datasets (~300 train imgs). The original run on ceia_custom_cropped_split
+# overfit clearly past epoch 10: train_acc kept climbing to 92% while
+# val_loss diverged from 9.7 to ~12, val_acc oscillated 40–60%.
+#
+# Changes vs partial_unfreeze_finetune.yaml:
+#   * block8 stays FROZEN (was unfrozen — 1.5M extra trainable params is too
+#     much for ~290 train images)
+#   * loss head lr 1e-3 → 5e-4 (CosFace s=30 amplifies gradients, so a
+#     lower head LR stabilizes the angular margin learning)
+#   * weight_decay 1e-4 → 1e-3 (10× stronger regularization)
+#   * num_epochs 30 → 15 (overfit started ~epoch 11; cap before it gets worse)
+#   * batch_size 32 → 16 (more iterations per epoch on a small dataset)
+#
+# Best checkpoint usually lands around epoch 8–12. Keep the early stopper on.
+
+optimizer:
+  type: Adam
+  params:
+    lr: 1.0e-5
+    weight_decay: 1.0e-3
+
+  param_groups:
+    - pattern: "loss.*"
+      lr: 5.0e-4            # was 1e-3 — gentler on the CosFace weight matrix
+    - pattern: "backbone.last_linear*"
+      lr: 1.0e-5
+    - pattern: "backbone.last_bn*"
+      lr: 1.0e-5
+
+lr_schedule:
+  type: StepLR
+  params:
+    step_size: 8
+    gamma: 0.5
+
+dataloader:
+  train:
+    batch_size: 16
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 16
+    shuffle: False
+    num_workers: 2
+
+num_epochs: 15
+device: cuda
+
+checkpoint:
+  save:
+    dir: ./checkpoints/cosface_minimal_unfreeze_finetune
+    frequency: 5
+  load:
+    path: ./models/base/vggface2_wrapped.pth
+    backbone: True
+    loss: False
+    scheduler: False
+    optimizer: False
+
+freeze:
+  # Only the final embedding head trains on the backbone side — block8 stays
+  # frozen because the small dataset can't support 1.5M extra trainable params.
+  except:
+    - "last_linear*"
+    - "last_bn*"
+
+seed: 42
+deterministic: false
+
+amp:
+  enabled: true
+  dtype: float16
+
+gradient_clip:
+  max_norm: 5.0
+  norm_type: 2.0
+
+logging:
+  tensorboard: true
+  log_dir: null
+
+onnx_export:
+  enabled: true
+  opset: 17
+  dynamic_batch: true

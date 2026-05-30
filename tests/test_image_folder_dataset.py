@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from config.dataset.train_val.base_train_val_dataset_config import TrainValDatasetConfig
+from config.train_val_dataset_config import TrainValDatasetConfig
 from dataset.train_val.image_folder_dataset import ImageFolderDataset, _scan_dir
 from tests.conftest import _PassthroughTransformation
 

@@ -81,7 +81,11 @@ def roc_curve(
     distance space for easy reuse with `verification_accuracy`.
     """
     lo, hi = float(distances.min()), float(distances.max())
-    thresholds = np.linspace(lo, hi, n_thresholds)
+    # Extend past both extrema so strict `<` reaches (0, 0) at the smallest
+    # threshold (rejects everything) and (1, 1) at the largest (accepts
+    # everything, since all distances are strictly below hi + eps).
+    eps = max(1e-12, (hi - lo) * 1e-9)
+    thresholds = np.linspace(lo - eps, hi + eps, n_thresholds)
     pos_mask = labels == 1
     neg_mask = labels == 0
     n_pos = max(int(pos_mask.sum()), 1)
@@ -98,7 +102,9 @@ def roc_curve(
 def roc_auc(distances: np.ndarray, labels: np.ndarray) -> float:
     """Trapezoidal AUC of the ROC curve."""
     fpr, tpr, _ = roc_curve(distances, labels)
-    order = np.argsort(fpr)
+    # lexsort breaks FPR ties by TPR so the trapezoidal integration stays
+    # monotonic across plateau regions of FPR.
+    order = np.lexsort((tpr, fpr))
     return float(np.trapezoid(tpr[order], fpr[order]))
 
 
@@ -116,11 +122,17 @@ def tar_at_far(distances: np.ndarray, labels: np.ndarray, far_target: float) -> 
 
     The smallest swept threshold yields FAR=0 by construction, so at least
     one candidate always satisfies fpr<=far_target for any positive target.
+    On TPR ties, prefer the LARGEST threshold (most permissive — operationally
+    more useful at the same TAR).
     """
     fpr, tpr, thresholds = roc_curve(distances, labels, n_thresholds=2000)
     valid = fpr <= far_target
     idx_candidates = np.where(valid)[0]
-    best = idx_candidates[np.argmax(tpr[idx_candidates])]
+    candidate_tprs = tpr[idx_candidates]
+    max_tpr = candidate_tprs.max()
+    # Tie-break by largest threshold.
+    tied = idx_candidates[candidate_tprs == max_tpr]
+    best = int(tied[np.argmax(thresholds[tied])])
     return float(tpr[best]), float(thresholds[best])
 
 
@@ -191,8 +203,9 @@ def cmc_curve(
     n_gallery = int(gl.shape[0])
     max_rank = int(max_rank) if max_rank is not None else n_gallery
 
-    # For each probe, sort gallery indices by descending similarity.
-    order = torch.argsort(sim, dim=1, descending=True).numpy()
+    # For each probe, sort gallery indices by descending similarity. `stable=True`
+    # keeps tie-breaking deterministic across runs.
+    order = torch.argsort(sim, dim=1, descending=True, stable=True).numpy()
     matches = np.zeros(max_rank, dtype=np.float64)
     n_valid = 0
     for i, true_label in enumerate(pl):
@@ -236,7 +249,7 @@ def mean_average_precision(
     sim = similarity.detach().cpu()
     pl = probe_labels.detach().cpu().numpy()
     gl = gallery_labels.detach().cpu().numpy()
-    order = torch.argsort(sim, dim=1, descending=True).numpy()
+    order = torch.argsort(sim, dim=1, descending=True, stable=True).numpy()
 
     aps: list[float] = []
     for i, true_label in enumerate(pl):
