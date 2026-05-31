@@ -101,9 +101,19 @@ class EvaluatorBuilder:
                 "`scripts/backfill_lora_config.py --run-dir <run>` to inject it."
             )
         result = self.backbone.load_state_dict(sd_to_load, strict=False)
+        total_keys = len(self.backbone.state_dict())
+        loaded_keys = total_keys - len(result.missing_keys)
+        # strict=False would silently evaluate a randomly-initialized backbone
+        # (deceptive ~85% LFW / chance metrics) if nothing matched. Fail loud.
+        if total_keys and sd_to_load and loaded_keys == 0:
+            raise ValueError(
+                f"Checkpoint {self.env.checkpoint_path}: 0 of {total_keys} backbone "
+                "parameters matched — the checkpoint does not fit backbone "
+                f"'{self.env.backbone}'. Pick the backbone the checkpoint was trained on."
+            )
         if result.missing_keys or result.unexpected_keys:
             print(
-                f"[EvaluatorBuilder] state_dict load: "
+                f"[EvaluatorBuilder] state_dict load: {loaded_keys}/{total_keys} matched, "
                 f"{len(result.missing_keys)} missing, "
                 f"{len(result.unexpected_keys)} unexpected keys"
             )

@@ -7,9 +7,8 @@ angular formulation gives a more consistent geometric penalty and typically
 edges out CosFace by 0.5-2pp on face-recognition benchmarks.
 """
 
-from typing import override
-
 import math
+from typing import override
 
 import torch
 import torch.nn as nn
@@ -30,6 +29,13 @@ class ArcFaceLoss(BaseLoss):
                             cos(theta) < 0, avoiding the angle wrap-around.
                             Helps stability at the very start of training.
     """
+
+    # Registered as buffers in __init__; annotated here so type-checkers treat
+    # attribute access as Tensor (not Tensor | Module) in the forward math.
+    cos_m: torch.Tensor
+    sin_m: torch.Tensor
+    th: torch.Tensor
+    mm: torch.Tensor
 
     def __init__(self, loss_config: LossConfig):
         super().__init__(loss_config)

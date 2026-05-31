@@ -50,7 +50,7 @@ device: cuda
 
 checkpoint:
   save:
-    dir: ./checkpoints/dinov3l_arcface_cow_faces_sota
+    dir: ./checkpoints/dinov3_l_arcface_lora
     frequency: 5
   load:
     path: null

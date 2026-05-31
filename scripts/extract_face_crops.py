@@ -63,7 +63,9 @@ def _select_box(result, strategy: str, target_class_ids: set[int] | None):
     return x1, y1, x2, y2, conf
 
 
-def _crop_with_margin(img: Image.Image, x1: float, y1: float, x2: float, y2: float, margin: float) -> Image.Image:
+def _crop_with_margin(
+    img: Image.Image, x1: float, y1: float, x2: float, y2: float, margin: float
+) -> Image.Image:
     """Expand the bbox by `margin` fraction on each side, clamped to image bounds."""
     w = x2 - x1
     h = y2 - y1

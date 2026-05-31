@@ -5,7 +5,7 @@ from config.early_stopper_config import EarlyStopperConfig
 from early_stopper.base_early_stopper import BaseEarlyStopper
 
 
-class AdaptativeEarlyStopper(BaseEarlyStopper):
+class AdaptiveEarlyStopper(BaseEarlyStopper):
     def __init__(self, config: EarlyStopperConfig):
         super().__init__(config)
 

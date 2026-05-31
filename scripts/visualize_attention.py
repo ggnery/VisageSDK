@@ -288,10 +288,7 @@ def _dinov3_heatmaps(backbone: torch.nn.Module, img_tensor: torch.Tensor, method
         # Manually reproduce DinoV3Backbone.forward so we can keep grad on attentions.
         out = hf_model(pixel_values=img_grad, output_attentions=True)
         hidden = out.last_hidden_state  # (B, 1 + n_register + n_patches, dim)
-        if dinov3_wrapper.token_strategy == "cls":
-            pooled = hidden[:, 0]
-        else:
-            pooled = hidden[:, n_special:].mean(dim=1)
+        pooled = hidden[:, 0] if dinov3_wrapper.token_strategy == "cls" else hidden[:, n_special:].mean(dim=1)
         emb = dinov3_wrapper.feature(pooled)
 
         target, label = _grad_target(emb, ref_emb)

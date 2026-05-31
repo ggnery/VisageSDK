@@ -1,5 +1,5 @@
 #=======================#=======================#=======================
-# These params are specific to the AdaptativeEarlyStopper
+# These params are specific to the AdaptiveEarlyStopper
 #=======================#=======================#=======================
 delta: 0.1
 base_patience: 5

@@ -1,10 +1,10 @@
-"""Tests for AdaptativeEarlyStopper behavior."""
+"""Tests for AdaptiveEarlyStopper behavior."""
 
 import pytest
 import yaml
 
 from config.early_stopper_config import EarlyStopperConfig
-from early_stopper.adaptative_early_stopper import AdaptativeEarlyStopper
+from early_stopper.adaptive_early_stopper import AdaptiveEarlyStopper
 
 
 @pytest.fixture
@@ -23,12 +23,12 @@ def make_stopper(tmp_path):
                 }
             )
         )
-        return AdaptativeEarlyStopper(EarlyStopperConfig(str(path)))
+        return AdaptiveEarlyStopper(EarlyStopperConfig(str(path)))
 
     return _make
 
 
-class TestAdaptativeEarlyStopper:
+class TestAdaptiveEarlyStopper:
     def test_does_not_stop_when_loss_improves(self, make_stopper):
         es = make_stopper(base_patience=3)
         for v in [1.0, 0.9, 0.8, 0.7]:
