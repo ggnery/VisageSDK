@@ -81,15 +81,15 @@ VAL_TRANSFORMATION=casia_webface_val
 TRAIN_VAL_TRANSFORMATION_CONFIG=./configs/transformation/train_val/casia_webface.yaml
 
 LOSS=margin_cosine
-LOSS_CONFIG=./configs/loss/margin_cosine_product.yaml
+LOSS_CONFIG=./configs/loss/margin_cosine.yaml
 
 TRAINER_CONFIG=./configs/trainer/mobilenetv3_from_scratch.yaml
 
 # Optional
-EARLY_STOPPER=adaptative
-EARLY_STOPPER_CONFIG=./configs/early_stopper/adaptative_early_stopper.yaml
+EARLY_STOPPER=adaptive
+EARLY_STOPPER_CONFIG=./configs/early_stopper/adaptive.yaml
 # SAMPLER=facenet
-# SAMPLER_CONFIG=./configs/batch_sampler/facenet_batch_sampler.yaml
+# SAMPLER_CONFIG=./configs/batch_sampler/facenet.yaml
 ```
 
 See `.env.example` for a documented reference and `.env.all` for snippets of every registered variant.
@@ -136,7 +136,7 @@ VisageSDK/
 │   ├── dataset/{train_val,eval}/   # ImageFolder / LFW pairs / Identification
 │   ├── transformation/{train_val,eval}/
 │   ├── batch_sampler/              # FacenetBatchSampler
-│   ├── early_stopper/              # AdaptativeEarlyStopper
+│   ├── early_stopper/              # AdaptiveEarlyStopper
 │   ├── evaluator/                  # Verification, Identification
 │   ├── tools/                      # optimizer, scheduler, freezer, metrics, seed, builders
 │   └── trainer/                    # Trainer with AMP / grad clip / TB / periodic eval
@@ -153,7 +153,7 @@ There are exactly two layers:
 1. **Component selection** — env vars (or the GUI) pick which class to instantiate from the registry: `BACKBONE=mobilenetv3`, `LOSS=triplet`, etc.
 2. **Component parameters** — a YAML per component, pointed at by `*_CONFIG` env vars.
 
-Every YAML key is automatically exposed as an attribute on its config object. For example, `configs/loss/triplet_loss.yaml`:
+Every YAML key is automatically exposed as an attribute on its config object. For example, `configs/loss/triplet.yaml`:
 
 ```yaml
 device: cuda
@@ -174,7 +174,7 @@ The trainer uses a slightly richer config (`TrainerConfig`) because it has struc
 | Eval datasets | `lfw_pairs`, `identification` |
 | Transformations | `vgg_face2_train`, `vgg_face2_val`, `casia_webface_train`, `casia_webface_val`, `lfw_eval` |
 | Samplers | `facenet` |
-| Early stoppers | `adaptative` |
+| Early stoppers | `adaptive` |
 | Evaluators | `verification`, `identification` |
 
 ## Trainer YAML reference
@@ -252,7 +252,12 @@ periodic_eval:
 
 ## Fine-tuning (freeze + discriminative LRs)
 
-Patterns are `fnmatch` globs against `named_parameters()` keys, prefixed with `backbone.` or `loss.` so the same scheme applies to both modules.
+Patterns are `fnmatch` globs, but freeze and optimizer rules match **different name spaces** — don't mix them up:
+
+- **`freeze.patterns` / `freeze.except` / `freeze.unfreeze_at_epoch`** match the backbone's **bare** `named_parameters()` keys — **no prefix** (e.g. `last_linear*`, `last_bn*`, `block8.*`). A `freeze.except` whose patterns match nothing freezes the *entire* backbone (head included), so training stalls on top of frozen features — the freezer logs a warning when this happens.
+- **`optimizer.param_groups`** patterns match **prefixed** names: `backbone.*` for backbone params, `loss.*` for loss params (e.g. `backbone.features.*`, `loss.*`).
+
+In short: `freeze.except: ["last_linear*"]` (unprefixed) vs `param_groups: [{pattern: "backbone.features.*", ...}]` (prefixed).
 
 - `freeze.patterns`: list of patterns to freeze.
 - `freeze.except`: freeze every parameter that does *not* match any of these patterns (handy for "freeze the backbone except the head").
@@ -389,4 +394,4 @@ uv add <package>           # add a dependency
 uv lock --upgrade          # refresh uv.lock
 ```
 
-The repo deliberately avoids leaf `*Config` classes — every component reads its YAML keys via attribute access on the shared `Base*Config`. Look at `src/loss/triplet_loss.py` and `configs/loss/triplet_loss.yaml` for the canonical pattern.
+The repo deliberately avoids leaf `*Config` classes — every component reads its YAML keys via attribute access on the shared `Base*Config`. Look at `src/loss/triplet_loss.py` and `configs/loss/triplet.yaml` for the canonical pattern.

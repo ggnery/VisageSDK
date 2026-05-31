@@ -22,7 +22,9 @@ def freeze_by_patterns(
         raise ValueError("Provide exactly one of `patterns` or `except_patterns`")
 
     frozen: list[str] = []
+    total = 0
     for name, p in module.named_parameters():
+        total += 1
         if patterns is not None:
             should_freeze = _match_any(name, patterns)
         else:
@@ -31,6 +33,18 @@ def freeze_by_patterns(
         if should_freeze:
             p.requires_grad = False
             frozen.append(name)
+    # Footgun guard: a `freeze.except` that matches NOTHING freezes the whole
+    # module, so training silently stalls on top of frozen (often pretrained)
+    # features. The usual cause is writing patterns with the 'backbone.'/'loss.'
+    # prefix that optimizer.param_groups use — but the freezer matches the
+    # backbone's BARE named_parameters(), so prefixed patterns never hit.
+    if except_patterns is not None and total and len(frozen) == total:
+        logging.getLogger(__name__).warning(
+            "freeze.except matched no parameters — the ENTIRE module is frozen "
+            f"(0/{total} params trainable). freeze patterns match bare parameter "
+            "names (e.g. 'last_linear*'), NOT the 'backbone.'/'loss.' prefix used "
+            "by optimizer.param_groups. Drop the prefix from your freeze patterns."
+        )
     return frozen
 
 

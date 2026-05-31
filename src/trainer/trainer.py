@@ -580,9 +580,23 @@ class Trainer:
                 )
             else:
                 result = self.backbone.load_state_dict(backbone_sd, strict=False)
+                total_keys = len(self.backbone.state_dict())
+                loaded_keys = total_keys - len(result.missing_keys)
+                # strict=False silently tolerates a TOTAL key mismatch, which
+                # means training proceeds from random weights with only a buried
+                # warning. Refuse when nothing matched — almost always a wrong
+                # BACKBONE / wrong checkpoint / stale wrapped file.
+                if total_keys and backbone_sd and loaded_keys == 0:
+                    raise ValueError(
+                        f"backbone load from {checkpoint_path}: 0 of {total_keys} parameters "
+                        "matched — the checkpoint does not fit this backbone architecture. "
+                        "Check that BACKBONE matches the checkpoint (and that the wrapped "
+                        "file isn't stale). Refusing to train from random weights."
+                    )
                 if result.missing_keys or result.unexpected_keys:
                     self.logger.warning(
-                        f"backbone load: {len(result.missing_keys)} missing, "
+                        f"backbone load: {loaded_keys}/{total_keys} matched, "
+                        f"{len(result.missing_keys)} missing, "
                         f"{len(result.unexpected_keys)} unexpected keys"
                     )
 

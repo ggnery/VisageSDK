@@ -60,7 +60,7 @@ class TestGlobalRegistries:
         assert "lfw_pairs" in b.EVAL_DATASETS.names()
         assert "identification" in b.EVAL_DATASETS.names()
         assert "facenet" in b.SAMPLERS.names()
-        assert "adaptative" in b.EARLY_STOPPERS.names()
+        assert "adaptive" in b.EARLY_STOPPERS.names()
         assert "verification" in b.EVALUATORS.names()
         assert "identification" in b.EVALUATORS.names()
         # Single TRANSFORMATIONS registry with prefixed names

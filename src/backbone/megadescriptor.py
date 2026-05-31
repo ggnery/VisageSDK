@@ -47,7 +47,7 @@ class MegaDescriptorBackbone(BaseBackbone):
         device: str
         model_name: str         timm id, e.g. "hf-hub:BVRA/MegaDescriptor-T-224"
 
-    LoRA targeting (see configs/trainer/megadescriptor_lora_cow_faces.yaml):
+    LoRA targeting (see configs/trainer/megadescriptor_cosface_lora.yaml):
         timm Swin blocks expose attention as `attn.{qkv, proj}` and MLP as
         `mlp.{fc1, fc2}`. Use `attn.proj` (not bare `proj`) so PEFT doesn't
         wrap the patch-merging `downsample.reduction` Linears too.

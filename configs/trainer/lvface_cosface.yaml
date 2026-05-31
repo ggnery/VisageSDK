@@ -14,7 +14,7 @@
 # Pair this trainer YAML with:
 #   BACKBONE_CONFIG=./configs/backbone/lvface_vit_b.yaml
 #   TRAIN_VAL_TRANSFORMATION_CONFIG=./configs/transformation/train_val/vgg_face2_augmented.yaml
-#   LOSS_CONFIG=./configs/loss/margin_cosine_product.yaml   (CosFace s=30, m=0.4)
+#   LOSS_CONFIG=./configs/loss/margin_cosine.yaml   (CosFace s=30, m=0.4)
 #   TRAIN_VAL_DATASET_CONFIG=./configs/dataset/train_val/ceia_motion_detection_faces.yaml
 
 optimizer:
@@ -44,7 +44,7 @@ device: cuda
 
 checkpoint:
   save:
-    dir: ./checkpoints/lvface_cosface_cow_faces
+    dir: ./checkpoints/lvface_cosface
     frequency: 5
   load:
     # Wrapped LVFace-B checkpoint — gerar com scripts/wrap_lvface_pretrained.py

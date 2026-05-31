@@ -46,7 +46,7 @@ device: cuda
 
 checkpoint:
   save:
-    dir: ./checkpoints/megadescriptor_arcface_lora_cow_faces_v2
+    dir: ./checkpoints/megadescriptor_arcface_lora_v2
     frequency: 5
   load:
     path: null
